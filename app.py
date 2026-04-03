@@ -8,47 +8,32 @@ from urllib.parse import urljoin, urlparse
 # -------------------------------
 # PAGE CONFIG + WHITE UI
 # -------------------------------
+st.set_page_config(page_title="MIDAS Sales Intelligence Tool", layout="wide")
+
 st.markdown("""
 <style>
+.stApp { background-color: white !important; color: black !important; }
+html, body, [class*="css"] { color: black !important; }
 
-/* Main background */
-.stApp {
-    background-color: white !important;
-    color: black !important;
-}
-
-/* Text */
-html, body, [class*="css"] {
-    color: black !important;
-}
-
-/* INPUT BOX FIX (THIS IS THE KEY) */
+/* Fix input bar */
 .stTextInput > div > div > input {
     background-color: white !important;
     color: black !important;
     border: 1px solid #ccc !important;
 }
 
-/* Also handle textarea just in case */
-textarea {
-    background-color: white !important;
-    color: black !important;
-}
-
-/* Button */
+/* Buttons */
 button {
     background-color: #f0f0f0 !important;
     color: black !important;
     border: 1px solid #ccc !important;
 }
 
-/* Remove dark focus glow */
-input:focus {
-    outline: none !important;
-    box-shadow: none !important;
-    border: 1px solid #999 !important;
+/* Code blocks */
+pre, code {
+    background-color: #f5f5f5 !important;
+    color: black !important;
 }
-
 </style>
 """, unsafe_allow_html=True)
 
@@ -141,7 +126,7 @@ def extract_company_name(pages, url):
     return urlparse(url).netloc
 
 # -------------------------------
-# STRICT NAME VALIDATION
+# STRICT NAME VALIDATION (UNCHANGED)
 # -------------------------------
 def is_valid_name(text):
     if not re.match(r"^[A-Z][a-z]+ [A-Z][a-z]+$", text):
@@ -157,7 +142,7 @@ def is_valid_name(text):
     return not any(b in text.lower() for b in blacklist)
 
 # -------------------------------
-# ENGINEER EXTRACTION
+# ENGINEER EXTRACTION (UNCHANGED)
 # -------------------------------
 def extract_people(pages):
     people = []
@@ -183,13 +168,12 @@ def extract_people(pages):
 
     return list(set(people))[:8]
 
-
 # -------------------------------
-# SERPER LINKEDIN SEARCH
+# LINKEDIN SEARCH (UPDATED)
 # -------------------------------
-def find_linkedin_profile(name, company):
+def find_linkedin_profile(name):
     try:
-        query = f"{name} {company} linkedin"
+        query = f"{name} linkedin"  # ❗ removed company
 
         url = "https://google.serper.dev/search"
 
@@ -207,22 +191,22 @@ def find_linkedin_profile(name, company):
             if "linkedin.com/in/" in link:
                 return link
 
-        return "Not found"
+        return None  # ❗ important change
 
     except:
-        return "Error"
+        return None
 
 # -------------------------------
-# ENRICH PEOPLE
+# ENRICH PEOPLE (ROBUST)
 # -------------------------------
-def enrich_people(people, company):
+def enrich_people(people):
     enriched = []
 
     for p in people:
         name = p.split("|")[0].strip()
         role = p.split("|")[1].strip() if "|" in p else ""
 
-        linkedin = find_linkedin_profile(name, company)
+        linkedin = find_linkedin_profile(name)
 
         enriched.append({
             "name": name,
@@ -286,9 +270,9 @@ Provide FULL report:
 1. What company does
 2. Engineering focus
 3. FEM opportunity
-4. Sales strategy
+4. Sales strategy (DETAILED)
 
-
+Do not stop early.
 """
 
     response = client.chat.completions.create(
@@ -335,7 +319,7 @@ if st.button("Run Analysis"):
     projects = extract_projects(pages)
     text = extract_company_text(pages)
 
-    enriched = enrich_people(people, company)
+    enriched = enrich_people(people)
 
     with st.spinner("🧠 Analyzing..."):
         result = analyze(company, text, people, projects)
@@ -344,12 +328,15 @@ if st.button("Run Analysis"):
     st.subheader("📊 Insights")
     st.write(result)
 
-    # ENGINEERS WITH LINKEDIN
+    # ENGINEERS
     with st.expander("👷 Engineers + LinkedIn"):
         if enriched:
             for p in enriched:
                 st.write(f"**{p['name']}** – {p['role']}")
-                st.write(p["linkedin"])
+                if p["linkedin"]:
+                    st.write(p["linkedin"])
+                else:
+                    st.write("LinkedIn not found")
         else:
             st.write("No engineers found")
 

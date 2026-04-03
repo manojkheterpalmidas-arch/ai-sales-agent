@@ -1,22 +1,20 @@
 import streamlit as st
-from firecrawl import FirecrawlApp
 from openai import OpenAI
 import re
 import requests
 from bs4 import BeautifulSoup
+from urllib.parse import urljoin, urlparse
 
 # -------------------------------
 # INIT
 # -------------------------------
-firecrawl = FirecrawlApp(api_key=st.secrets["FIRECRAWL_API_KEY"])
-
 client = OpenAI(
     api_key=st.secrets["DEEPSEEK_API_KEY"],
     base_url="https://api.deepseek.com"
 )
 
 # -------------------------------
-# FALLBACK SCRAPER (CRITICAL)
+# FALLBACK SCRAPER
 # -------------------------------
 def fallback_scrape(url):
     try:
@@ -25,58 +23,81 @@ def fallback_scrape(url):
         soup = BeautifulSoup(res.text, "html.parser")
 
         text = soup.get_text(separator="\n")
-        return text[:3000]
+        return text[:4000]
 
     except:
         return ""
 
 # -------------------------------
-# SMART SCRAPE (FIRECRAWL + FALLBACK)
+# GET INTERNAL LINKS
+# -------------------------------
+def get_internal_links(base_url):
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        res = requests.get(base_url, headers=headers, timeout=10)
+        soup = BeautifulSoup(res.text, "html.parser")
+
+        links = set()
+        domain = urlparse(base_url).netloc
+
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+
+            full_url = urljoin(base_url, href)
+
+            if urlparse(full_url).netloc == domain:
+                links.add(full_url)
+
+        return list(links)
+
+    except:
+        return []
+
+# -------------------------------
+# SMART DEEP CRAWL
 # -------------------------------
 def crawl_site(base_url):
-    pages_to_try = [
-        base_url,
-        base_url + "/about",
-        base_url + "/about-us",
-        base_url + "/services",
-        base_url + "/projects",
-        base_url + "/portfolio",
-        base_url + "/team",
-        base_url + "/people",
-        base_url + "/who-we-are"
-    ]
-
     pages = []
 
-    for url in pages_to_try:
-        text = ""
+    # 🔥 Always include homepage
+    homepage = fallback_scrape(base_url)
 
-        # 🔥 Try Firecrawl
-        try:
-            result = firecrawl.scrape_url(url, formats=["markdown"])
-            text = result.get("markdown", "")
-        except:
-            pass
+    if homepage:
+        pages.append({
+            "url": base_url,
+            "markdown": homepage
+        })
 
-        # 🔥 Fallback if Firecrawl fails
-        if not text or len(text) < 100:
-            text = fallback_scrape(url)
+    # 🔥 Discover links
+    links = get_internal_links(base_url)
+
+    # prioritize important pages
+    priority_keywords = ["about", "team", "people", "project", "service", "portfolio"]
+
+    sorted_links = sorted(
+        links,
+        key=lambda x: any(p in x.lower() for p in priority_keywords),
+        reverse=True
+    )
+
+    # 🔥 Crawl top 10 links
+    for link in sorted_links[:10]:
+        text = fallback_scrape(link)
 
         if text:
             pages.append({
-                "url": url,
+                "url": link,
                 "markdown": text
             })
 
     return pages
 
 # -------------------------------
-# COMPANY NAME DETECTION
+# COMPANY NAME
 # -------------------------------
 def extract_company_name(pages, url):
     for page in pages:
-        text = page.get("markdown", "")
-        lines = text.split("\n")
+        lines = page["markdown"].split("\n")
 
         for line in lines[:10]:
             if 5 < len(line) < 80:
@@ -92,26 +113,27 @@ def extract_people(pages):
     people = set()
 
     for page in pages:
-        text = page.get("markdown", "")
-
-        matches = re.findall(r"\b[A-Z][a-z]+ [A-Z][a-z]+\b", text)
+        matches = re.findall(r"\b[A-Z][a-z]+ [A-Z][a-z]+\b", page["markdown"])
 
         for m in matches:
-            if len(m.split()) == 2:
-                people.add(m)
+            people.add(m)
 
-    return list(people)[:5]
+    return list(people)[:8]
 
 # -------------------------------
-# PROJECT EXTRACTION
+# PROJECT DETECTION
 # -------------------------------
 def extract_projects(pages):
-    keywords = ["bridge", "tunnel", "geotechnical", "structural", "infrastructure"]
+    keywords = [
+        "bridge", "tunnel", "geotechnical",
+        "structural", "infrastructure",
+        "highway", "rail"
+    ]
 
     found = set()
 
     for page in pages:
-        text = page.get("markdown", "").lower()
+        text = page["markdown"].lower()
 
         for k in keywords:
             if k in text:
@@ -120,15 +142,15 @@ def extract_projects(pages):
     return list(found)
 
 # -------------------------------
-# COMPANY TEXT
+# COMBINE TEXT (DEEP)
 # -------------------------------
 def extract_company_text(pages):
     combined = ""
 
-    for page in pages[:3]:
-        combined += page.get("markdown", "")[:1500]
+    for page in pages[:8]:
+        combined += page["markdown"][:3000]
 
-    return combined
+    return combined[:15000]
 
 # -------------------------------
 # LLM ANALYSIS
@@ -137,7 +159,7 @@ def analyze(company, text, people, projects):
     prompt = f"""
 Company: {company}
 
-Website Info:
+Website Data:
 {text}
 
 People Found:
@@ -148,23 +170,24 @@ Project Types:
 
 Analyze:
 
-1. What company does
+1. What the company does
 2. Engineering capabilities
-3. Which people are likely decision makers (from list only)
-4. Where FEM is used (only if clear)
-5. Sales approach
+3. Decision makers (from given names only)
+4. Where FEM is used
+5. Sales strategy
 
-DO NOT invent data.
+Be practical and realistic.
+DO NOT invent names or projects.
 """
 
     response = client.chat.completions.create(
         model="deepseek-chat",
         messages=[
-            {"role": "system", "content": "You are a strict engineering analyst."},
+            {"role": "system", "content": "You are a senior engineering sales analyst."},
             {"role": "user", "content": prompt}
         ],
         temperature=0.2,
-        max_tokens=700
+        max_tokens=800
     )
 
     return response.choices[0].message.content
@@ -172,9 +195,9 @@ DO NOT invent data.
 # -------------------------------
 # UI
 # -------------------------------
-st.set_page_config(page_title="MIDAS Sales Intelligence", layout="wide")
+st.set_page_config(page_title="MIDAS Sales Intelligence V6", layout="wide")
 
-st.title("🚀 MIDAS Sales Intelligence Tool")
+st.title("🚀 MIDAS Sales Intelligence Tool (Deep Crawl)")
 
 website = st.text_input("Enter Company Website URL")
 
@@ -187,13 +210,13 @@ if st.button("Run Analysis"):
     if not website.startswith("http"):
         website = "https://" + website
 
-    with st.spinner("🔍 Crawling website..."):
+    with st.spinner("🔍 Deep crawling website..."):
         pages = crawl_site(website)
 
-    st.write(f"🔎 Pages found: {len(pages)}")
+    st.write(f"🔎 Pages crawled: {len(pages)}")
 
     if not pages:
-        st.error("❌ Unable to fetch website data.")
+        st.error("❌ Could not extract data.")
         st.stop()
 
     company = extract_company_name(pages, website)
@@ -211,7 +234,7 @@ if st.button("Run Analysis"):
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("👥 Extracted People (Raw)")
+        st.subheader("👥 Extracted People")
         st.write(people)
 
         st.subheader("🏗️ Project Types")

@@ -141,16 +141,17 @@ def extract_company_name(pages, url):
     return urlparse(url).netloc
 
 # -------------------------------
-# VALID NAME FILTER
+# STRICT NAME VALIDATION
 # -------------------------------
 def is_valid_name(text):
     if not re.match(r"^[A-Z][a-z]+ [A-Z][a-z]+$", text):
         return False
 
     blacklist = [
-        "management","services","engineering","infrastructure",
-        "impact","solutions","consulting","group",
-        "project","rail","transport","design"
+        "management", "services", "engineering",
+        "infrastructure", "impact", "solutions",
+        "consulting", "group", "project",
+        "rail", "transport", "design"
     ]
 
     return not any(b in text.lower() for b in blacklist)
@@ -162,17 +163,17 @@ def extract_people(pages):
     people = []
 
     role_keywords = [
-        "engineer","structural","bridge",
-        "geotechnical","civil","principal",
-        "senior","lead"
+        "engineer", "structural", "bridge",
+        "geotechnical", "civil",
+        "principal", "senior", "lead"
     ]
 
     for page in pages:
         lines = page["markdown"].split("\n")
 
-        for i in range(len(lines)-1):
+        for i in range(len(lines) - 1):
             name = lines[i].strip()
-            role = lines[i+1].strip().lower()
+            role = lines[i + 1].strip().lower()
 
             if not is_valid_name(name):
                 continue
@@ -180,7 +181,8 @@ def extract_people(pages):
             if any(k in role for k in role_keywords):
                 people.append(f"{name} | {lines[i+1].strip()}")
 
-    return list(set(people))[:6]
+    return list(set(people))[:8]
+
 
 # -------------------------------
 # SERPER LINKEDIN SEARCH

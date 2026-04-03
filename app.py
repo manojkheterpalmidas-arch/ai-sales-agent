@@ -8,22 +8,78 @@ from urllib.parse import urljoin, urlparse
 st.set_page_config(page_title="MIDAS Sales Intelligence Tool", layout="wide")
 
 st.markdown("""
-    <style>
-    body {
-        background-color: white;
-        color: black;
-    }
-    .stApp {
-        background-color: white;
-        color: black;
-    }
-    h1, h2, h3, h4, h5, h6 {
-        color: black;
-    }
-    p, div {
-        color: black;
-    }
-    </style>
+<style>
+
+/* Main app background */
+.stApp {
+    background-color: white !important;
+    color: black !important;
+}
+
+/* Text */
+html, body, [class*="css"]  {
+    color: black !important;
+}
+
+/* Headers */
+h1, h2, h3, h4 {
+    color: black !important;
+}
+
+/* Input boxes */
+input, textarea {
+    background-color: white !important;
+    color: black !important;
+}
+
+/* Buttons */
+button {
+    background-color: #f0f0f0 !important;
+    color: black !important;
+    border: 1px solid #ccc !important;
+}
+
+/* Expanders (your "bars") */
+details {
+    background-color: white !important;
+    border: 1px solid #ddd !important;
+    border-radius: 8px;
+    padding: 10px;
+}
+
+/* Expander header */
+summary {
+    color: black !important;
+    font-weight: 600;
+}
+
+/* Code blocks (very important — your dark bars) */
+code {
+    background-color: #f5f5f5 !important;
+    color: black !important;
+}
+
+/* Preformatted blocks */
+pre {
+    background-color: #f5f5f5 !important;
+    color: black !important;
+    border-radius: 8px;
+    padding: 10px;
+}
+
+/* Data boxes / JSON display */
+.stCodeBlock {
+    background-color: #f5f5f5 !important;
+    color: black !important;
+}
+
+/* Expandable JSON (your current dark box issue) */
+.css-1d391kg, .css-1v0mbdj {
+    background-color: white !important;
+    color: black !important;
+}
+
+</style>
 """, unsafe_allow_html=True)
 # -------------------------------
 # INIT

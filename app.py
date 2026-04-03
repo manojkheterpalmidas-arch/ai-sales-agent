@@ -73,8 +73,11 @@ st.markdown("""
     top: 15px;
     right: 25px;
     font-size: 13px;
-    font-weight: 500;
-    color: #555;
+    font-weight: 600;
+    background-color: #f5f5f5;
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid #ccc;
     z-index: 9999;
 ">
     Manoj | MIDAS IT

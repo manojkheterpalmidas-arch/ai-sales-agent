@@ -66,6 +66,20 @@ input {
 
 </style>
 """, unsafe_allow_html=True)
+
+st.markdown("""
+<div style="
+    position: fixed;
+    top: 15px;
+    right: 25px;
+    font-size: 14px;
+    font-weight: 600;
+    color: black;
+    z-index: 9999;
+">
+    Manoj | MIDAS IT
+</div>
+""", unsafe_allow_html=True)
 # -------------------------------
 # INIT
 # -------------------------------

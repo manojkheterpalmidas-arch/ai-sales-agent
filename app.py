@@ -5,84 +5,22 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 
+# -------------------------------
+# PAGE CONFIG + WHITE UI
+# -------------------------------
 st.set_page_config(page_title="MIDAS Sales Intelligence Tool", layout="wide")
 
 st.markdown("""
 <style>
-
-/* Main app background */
-.stApp {
-    background-color: white !important;
-    color: black !important;
-}
-
-/* Text */
-html, body, [class*="css"]  {
-    color: black !important;
-}
-
-/* Headers */
-h1, h2, h3, h4 {
-    color: black !important;
-}
-
-/* Input boxes */
-input, textarea {
-    background-color: white !important;
-    color: black !important;
-}
-
-/* Buttons */
-button {
-    background-color: #f0f0f0 !important;
-    color: black !important;
-    border: 1px solid #ccc !important;
-}
-
-/* Expanders (your "bars") */
-details {
-    background-color: white !important;
-    border: 1px solid #ddd !important;
-    border-radius: 8px;
-    padding: 10px;
-}
-
-/* Expander header */
-summary {
-    color: black !important;
-    font-weight: 600;
-}
-
-/* Code blocks (very important — your dark bars) */
-code {
-    background-color: #f5f5f5 !important;
-    color: black !important;
-}
-
-/* Preformatted blocks */
-pre {
-    background-color: #f5f5f5 !important;
-    color: black !important;
-    border-radius: 8px;
-    padding: 10px;
-}
-
-/* Data boxes / JSON display */
-.stCodeBlock {
-    background-color: #f5f5f5 !important;
-    color: black !important;
-}
-
-/* Expandable JSON (your current dark box issue) */
-.css-1d391kg, .css-1v0mbdj {
-    background-color: white !important;
-    color: black !important;
-}
-
+.stApp { background-color: white !important; color: black !important; }
+html, body, [class*="css"]  { color: black !important; }
+h1, h2, h3, h4 { color: black !important; }
+pre, code { background-color: #f5f5f5 !important; color: black !important; }
 </style>
 """, unsafe_allow_html=True)
+
 # -------------------------------
-# INIT
+# INIT LLM
 # -------------------------------
 client = OpenAI(
     api_key=st.secrets["DEEPSEEK_API_KEY"],
@@ -90,25 +28,20 @@ client = OpenAI(
 )
 
 # -------------------------------
-# SCRAPER (STREAMLIT SAFE)
+# SCRAPER
 # -------------------------------
 def scrape_page(url):
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0",
-            "Accept-Language": "en-US"
-        }
-
+        headers = {"User-Agent": "Mozilla/5.0"}
         res = requests.get(url, headers=headers, timeout=10)
 
         if res.status_code != 200:
             return ""
 
         soup = BeautifulSoup(res.text, "html.parser")
-
         text = soup.get_text(separator="\n")
-        return text[:6000]
 
+        return text[:6000]
     except:
         return ""
 
@@ -119,8 +52,7 @@ def get_links(base_url):
     links = set()
 
     try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        res = requests.get(base_url, headers=headers, timeout=10)
+        res = requests.get(base_url, headers={"User-Agent": "Mozilla/5.0"})
         soup = BeautifulSoup(res.text, "html.parser")
 
         domain = urlparse(base_url).netloc
@@ -131,7 +63,6 @@ def get_links(base_url):
 
             if urlparse(full).netloc == domain:
                 links.add(full)
-
     except:
         pass
 
@@ -170,26 +101,23 @@ def crawl_site(base_url):
 # -------------------------------
 def extract_company_name(pages, url):
     for page in pages:
-        lines = page["markdown"].split("\n")
-
-        for line in lines[:10]:
+        for line in page["markdown"].split("\n")[:10]:
             if 5 < len(line) < 80:
                 return line.strip()
 
     return urlparse(url).netloc
 
 # -------------------------------
-# STRICT NAME VALIDATION
+# VALID NAME FILTER
 # -------------------------------
 def is_valid_name(text):
     if not re.match(r"^[A-Z][a-z]+ [A-Z][a-z]+$", text):
         return False
 
     blacklist = [
-        "management", "services", "engineering",
-        "infrastructure", "impact", "solutions",
-        "consulting", "group", "project",
-        "rail", "transport", "design"
+        "management","services","engineering","infrastructure",
+        "impact","solutions","consulting","group",
+        "project","rail","transport","design"
     ]
 
     return not any(b in text.lower() for b in blacklist)
@@ -201,17 +129,17 @@ def extract_people(pages):
     people = []
 
     role_keywords = [
-        "engineer", "structural", "bridge",
-        "geotechnical", "civil",
-        "principal", "senior", "lead"
+        "engineer","structural","bridge",
+        "geotechnical","civil","principal",
+        "senior","lead"
     ]
 
     for page in pages:
         lines = page["markdown"].split("\n")
 
-        for i in range(len(lines) - 1):
+        for i in range(len(lines)-1):
             name = lines[i].strip()
-            role = lines[i + 1].strip().lower()
+            role = lines[i+1].strip().lower()
 
             if not is_valid_name(name):
                 continue
@@ -219,15 +147,63 @@ def extract_people(pages):
             if any(k in role for k in role_keywords):
                 people.append(f"{name} | {lines[i+1].strip()}")
 
-    return list(set(people))[:8]
+    return list(set(people))[:6]
+
+# -------------------------------
+# SERPER LINKEDIN SEARCH
+# -------------------------------
+def find_linkedin_profile(name, company):
+    try:
+        query = f"{name} {company} linkedin"
+
+        url = "https://google.serper.dev/search"
+
+        headers = {
+            "X-API-KEY": st.secrets["SERPER_API_KEY"],
+            "Content-Type": "application/json"
+        }
+
+        res = requests.post(url, json={"q": query}, headers=headers)
+        data = res.json()
+
+        for result in data.get("organic", []):
+            link = result.get("link", "")
+
+            if "linkedin.com/in/" in link:
+                return link
+
+        return "Not found"
+
+    except:
+        return "Error"
+
+# -------------------------------
+# ENRICH PEOPLE
+# -------------------------------
+def enrich_people(people, company):
+    enriched = []
+
+    for p in people:
+        name = p.split("|")[0].strip()
+        role = p.split("|")[1].strip() if "|" in p else ""
+
+        linkedin = find_linkedin_profile(name, company)
+
+        enriched.append({
+            "name": name,
+            "role": role,
+            "linkedin": linkedin
+        })
+
+    return enriched
 
 # -------------------------------
 # PROJECTS
 # -------------------------------
 def extract_projects(pages):
     keywords = [
-        "bridge", "tunnel", "geotechnical",
-        "structural", "rail", "highway"
+        "bridge","tunnel","geotechnical",
+        "structural","rail","highway"
     ]
 
     found = set()
@@ -257,7 +233,7 @@ def extract_company_text(pages):
 # -------------------------------
 def analyze(company, text, people, projects):
     if not people:
-        people = "No engineers found on website"
+        people = "No engineers found"
 
     prompt = f"""
 Company: {company}
@@ -271,21 +247,20 @@ Engineers:
 Projects:
 {projects}
 
-Analyze:
-- What company does
-- Engineering focus
-- Relevant engineers
-- FEM opportunities
-- Sales approach
+Provide FULL report:
+1. What company does
+2. Engineering focus
+3. FEM opportunity
+4. Sales strategy (DETAILED)
 
-Do not invent names.
+Do not stop early.
 """
 
     response = client.chat.completions.create(
         model="deepseek-chat",
         messages=[
-            {"role": "system", "content": "You are a structural engineering sales expert."},
-            {"role": "user", "content": prompt}
+            {"role":"system","content":"You are a structural engineering sales expert."},
+            {"role":"user","content":prompt}
         ],
         temperature=0.2,
         max_tokens=2000
@@ -293,7 +268,6 @@ Do not invent names.
 
     return response.choices[0].message.content
 
-# -------------------------------
 # -------------------------------
 # UI
 # -------------------------------
@@ -313,10 +287,8 @@ if st.button("Run Analysis"):
     with st.spinner("🔍 Crawling..."):
         pages = crawl_site(website)
 
-    st.write(f"Pages crawled: {len(pages)}")
-
     if not pages:
-        st.error("Could not extract data.")
+        st.error("Could not extract data")
         st.stop()
 
     company = extract_company_name(pages, website)
@@ -328,18 +300,24 @@ if st.button("Run Analysis"):
     projects = extract_projects(pages)
     text = extract_company_text(pages)
 
+    enriched = enrich_people(people, company)
+
     with st.spinner("🧠 Analyzing..."):
         result = analyze(company, text, people, projects)
 
-    # 🔥 MAIN OUTPUT FIRST
+    # MAIN OUTPUT
     st.subheader("📊 Insights")
     st.write(result)
 
-    # 🔥 BACKGROUND DATA (COLLAPSIBLE)
-    with st.expander("🔍 View Extracted Data (Engineers & Projects)"):
+    # ENGINEERS WITH LINKEDIN
+    with st.expander("👷 Engineers + LinkedIn"):
+        if enriched:
+            for p in enriched:
+                st.write(f"**{p['name']}** – {p['role']}")
+                st.write(p["linkedin"])
+        else:
+            st.write("No engineers found")
 
-        st.subheader("👷 Engineers")
-        st.write(people if people else "No engineers found")
-
-        st.subheader("🏗️ Projects")
+    # PROJECTS
+    with st.expander("🏗️ Projects"):
         st.write(projects)

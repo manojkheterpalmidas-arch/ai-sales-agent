@@ -8,60 +8,41 @@ from urllib.parse import urljoin, urlparse
 # -------------------------------
 # PAGE CONFIG + WHITE UI
 # -------------------------------
-st.set_page_config(page_title="MIDAS Sales Intelligence Tool", layout="wide")
-
-st.markdown("""
-<style>
-.stApp { background-color: white !important; color: black !important; }
-html, body, [class*="css"] { color: black !important; }
-
-.stTextInput > div > div > input {
-    background-color: white !important;
-    color: black !important;
-    border: 1px solid #ccc !important;
-}
-
-button {
-    background-color: #f0f0f0 !important;
-    color: black !important;
-    border: 1px solid #ccc !important;
-}
-
-pre, code {
-    background-color: #f5f5f5 !important;
-    color: black !important;
-}
-</style>
-""", unsafe_allow_html=True)
-
 st.markdown("""
 <style>
 
-/* INPUT BOX FIX (with visible cursor) */
+/* Base input */
 .stTextInput > div > div > input {
     background-color: white !important;
     color: black !important;
-    border: 1px solid #ccc !important;
-    caret-color: black !important;   /* 🔥 THIS FIXES THE CURSOR */
-    font-size: 16px;
+    border: 1px solid #333 !important;   /* black border */
+    caret-color: black !important;
     padding: 10px;
+    border-radius: 8px;
 }
 
-/* Focus state (when clicking input) */
+/* Focus (when typing) */
 .stTextInput > div > div > input:focus {
-    border: 1px solid #888 !important;
+    border: 1px solid #333 !important;   /* keep black */
     outline: none !important;
-    box-shadow: 0 0 0 1px #aaa !important;
+    box-shadow: none !important;         /* remove glow */
 }
 
-/* Placeholder text */
-.stTextInput > div > div > input::placeholder {
-    color: #888 !important;
+/* 🚨 OVERRIDE RED ERROR STATE */
+.stTextInput > div > div > input:invalid {
+    border: 1px solid #333 !important;
+    box-shadow: none !important;
 }
 
-/* Smooth typing feel */
+/* ALSO override Streamlit-specific focus ring */
+.stTextInput div[data-baseweb="input"] {
+    border-color: #333 !important;
+}
+
+/* Remove any red highlight */
 input {
-    transition: all 0.2s ease-in-out;
+    outline: none !important;
+    box-shadow: none !important;
 }
 
 </style>

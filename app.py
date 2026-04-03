@@ -182,14 +182,18 @@ def extract_company_name(pages, url):
 # STRICT NAME VALIDATION
 # -------------------------------
 def is_valid_name(text):
-    if not re.match(r"^[A-Z][a-z]+ [A-Z][a-z]+$", text):
+    text = text.strip()
+
+    # allow 2–3 word names
+    if not re.match(r"^[A-Z][a-z]+(?:[-'][A-Z][a-z]+)?(?: [A-Z][a-z]+){1,2}$", text):
         return False
 
     blacklist = [
         "management", "services", "engineering",
         "infrastructure", "impact", "solutions",
         "consulting", "group", "project",
-        "rail", "transport", "design"
+        "rail", "transport", "design",
+        "director", "associate", "engineer"
     ]
 
     return not any(b in text.lower() for b in blacklist)

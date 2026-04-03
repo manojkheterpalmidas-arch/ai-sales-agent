@@ -1,20 +1,19 @@
 import streamlit as st
-import os
 from firecrawl import FirecrawlApp
 from openai import OpenAI
 
 # -------------------------------
-# INIT
+# INIT (STREAMLIT SECRETS)
 # -------------------------------
-firecrawl = FirecrawlApp(api_key=os.getenv("FIRECRAWL_API_KEY"))
+firecrawl = FirecrawlApp(api_key=st.secrets["FIRECRAWL_API_KEY"])
 
 client = OpenAI(
-    api_key=os.getenv("DEEPSEEK_API_KEY"),
+    api_key=st.secrets["DEEPSEEK_API_KEY"],
     base_url="https://api.deepseek.com"
 )
 
 # -------------------------------
-# MULTI PAGE CRAWL
+# MULTI-PAGE CRAWL
 # -------------------------------
 def crawl_pages(base_url):
     pages = {
@@ -37,7 +36,24 @@ def crawl_pages(base_url):
 
 
 # -------------------------------
-# COMPANY + CAPABILITIES
+# LLM CALL
+# -------------------------------
+def call_llm(prompt):
+    response = client.chat.completions.create(
+        model="deepseek-chat",
+        messages=[
+            {"role": "system", "content": "You are a precise structural engineering analyst."},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0.2,
+        max_tokens=700
+    )
+
+    return response.choices[0].message.content
+
+
+# -------------------------------
+# ANALYSIS FUNCTIONS
 # -------------------------------
 def analyze_company(data, company):
     prompt = f"""
@@ -45,58 +61,48 @@ Analyze this engineering company.
 
 COMPANY: {company}
 
-HOME + SERVICES DATA:
+DATA:
 {data["home"]}
 {data["services"]}
 
 Return:
 
-1. Company Overview
-2. Engineering Capabilities
-   - structures
-   - sectors
-   - expertise
-
-Be specific.
+- Company overview
+- History / positioning
+- Sectors
+- Engineering capabilities
+- Types of structures
 """
-
     return call_llm(prompt)
 
 
-# -------------------------------
-# PROJECT ANALYSIS
-# -------------------------------
 def analyze_projects(data):
     prompt = f"""
-Analyze project types from this data:
+Analyze engineering projects.
 
+DATA:
 {data["projects"]}
 
 Return:
 - Types of structures (bridges, buildings, geotech)
-- Complexity level
+- Project complexity
 - Engineering focus
-
-Be precise.
 """
     return call_llm(prompt)
 
 
-# -------------------------------
-# PEOPLE EXTRACTION
-# -------------------------------
 def extract_people(data):
     prompt = f"""
 Extract ONLY engineering decision makers.
 
-TEAM DATA:
+DATA:
 {data["team"]}
 
 Rules:
-- Structural / Bridge / Geotech only
-- No guessing
+- Structural / Bridge / Geotechnical roles only
+- Do NOT guess names
 
-Classify:
+Format:
 Name | Role | Decision Level
 
 Decision Level:
@@ -105,13 +111,9 @@ Decision Level:
 
 Max 5 people.
 """
-
     return call_llm(prompt)
 
 
-# -------------------------------
-# FINAL SALES STRATEGY
-# -------------------------------
 def generate_strategy(company, comp, proj, people):
     prompt = f"""
 You are selling MIDAS FEM software.
@@ -127,43 +129,25 @@ Projects:
 People:
 {people}
 
-Generate:
+Return:
 
-1. Where they use FEM
-2. Pain points
+1. Where FEM is used
+2. Key pain points
 3. Best decision makers
 4. Sales approach
 5. Outreach message
 
-Be practical and specific.
+Be specific and practical.
 """
-
     return call_llm(prompt)
-
-
-# -------------------------------
-# LLM CALL
-# -------------------------------
-def call_llm(prompt):
-    response = client.chat.completions.create(
-        model="deepseek-chat",
-        messages=[
-            {"role": "system", "content": "You are a precise engineering analyst."},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.2,
-        max_tokens=600
-    )
-
-    return response.choices[0].message.content
 
 
 # -------------------------------
 # UI
 # -------------------------------
-st.set_page_config(page_title="AI Sales Intelligence V4", layout="wide")
+st.set_page_config(page_title="MIDAS Sales Intelligence", layout="wide")
 
-st.title("🚀 Structural Engineering Intelligence (V4)")
+st.title("🚀 MIDAS Sales Intelligence Tool")
 
 company = st.text_input("Company Name")
 website = st.text_input("Website URL")
@@ -173,7 +157,7 @@ if st.button("Run Analysis"):
     if not website.startswith("http"):
         website = "https://" + website
 
-    with st.spinner("🔥 Crawling structured pages..."):
+    with st.spinner("🔥 Crawling website..."):
         data = crawl_pages(website)
 
     with st.spinner("🧠 Analyzing company..."):
@@ -182,21 +166,27 @@ if st.button("Run Analysis"):
     with st.spinner("🏗️ Analyzing projects..."):
         proj = analyze_projects(data)
 
-    with st.spinner("👥 Extracting people..."):
+    with st.spinner("👥 Extracting decision makers..."):
         people = extract_people(data)
 
-    with st.spinner("📊 Building strategy..."):
+    with st.spinner("📊 Generating sales strategy..."):
         strategy = generate_strategy(company, comp, proj, people)
 
-    # OUTPUT
-    st.subheader("🏢 Company Overview")
-    st.text(comp)
+    # -------------------------------
+    # DISPLAY CLEAN UI
+    # -------------------------------
+    col1, col2 = st.columns(2)
 
-    st.subheader("🏗️ Projects & Capabilities")
-    st.text(proj)
+    with col1:
+        st.subheader("🏢 Company Overview")
+        st.write(comp)
 
-    st.subheader("👥 Key People")
-    st.text(people)
+        st.subheader("🏗️ Engineering Projects")
+        st.write(proj)
 
-    st.subheader("📊 Sales Strategy")
-    st.text(strategy)
+    with col2:
+        st.subheader("👥 Key Decision Makers")
+        st.write(people)
+
+        st.subheader("📊 Sales Strategy")
+        st.write(strategy)

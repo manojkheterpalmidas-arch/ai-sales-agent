@@ -2,6 +2,8 @@ import streamlit as st
 from firecrawl import FirecrawlApp
 from openai import OpenAI
 import re
+import requests
+from bs4 import BeautifulSoup
 
 # -------------------------------
 # INIT
@@ -14,7 +16,22 @@ client = OpenAI(
 )
 
 # -------------------------------
-# SMART SCRAPE (FIXED)
+# FALLBACK SCRAPER (CRITICAL)
+# -------------------------------
+def fallback_scrape(url):
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        res = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(res.text, "html.parser")
+
+        text = soup.get_text(separator="\n")
+        return text[:3000]
+
+    except:
+        return ""
+
+# -------------------------------
+# SMART SCRAPE (FIRECRAWL + FALLBACK)
 # -------------------------------
 def crawl_site(base_url):
     pages_to_try = [
@@ -32,21 +49,26 @@ def crawl_site(base_url):
     pages = []
 
     for url in pages_to_try:
+        text = ""
+
+        # 🔥 Try Firecrawl
         try:
             result = firecrawl.scrape_url(url, formats=["markdown"])
             text = result.get("markdown", "")
-
-            if text:  # accept all non-empty pages
-                pages.append({
-                    "url": url,
-                    "markdown": text
-                })
-
         except:
-            continue
+            pass
+
+        # 🔥 Fallback if Firecrawl fails
+        if not text or len(text) < 100:
+            text = fallback_scrape(url)
+
+        if text:
+            pages.append({
+                "url": url,
+                "markdown": text
+            })
 
     return pages
-
 
 # -------------------------------
 # COMPANY NAME DETECTION
@@ -60,10 +82,8 @@ def extract_company_name(pages, url):
             if 5 < len(line) < 80:
                 return line.strip()
 
-    # fallback
     domain = re.sub(r"https?://(www\.)?", "", url)
     return domain.split("/")[0]
-
 
 # -------------------------------
 # PEOPLE EXTRACTION
@@ -82,7 +102,6 @@ def extract_people(pages):
 
     return list(people)[:5]
 
-
 # -------------------------------
 # PROJECT EXTRACTION
 # -------------------------------
@@ -100,7 +119,6 @@ def extract_projects(pages):
 
     return list(found)
 
-
 # -------------------------------
 # COMPANY TEXT
 # -------------------------------
@@ -111,7 +129,6 @@ def extract_company_text(pages):
         combined += page.get("markdown", "")[:1500]
 
     return combined
-
 
 # -------------------------------
 # LLM ANALYSIS
@@ -152,7 +169,6 @@ DO NOT invent data.
 
     return response.choices[0].message.content
 
-
 # -------------------------------
 # UI
 # -------------------------------
@@ -174,22 +190,11 @@ if st.button("Run Analysis"):
     with st.spinner("🔍 Crawling website..."):
         pages = crawl_site(website)
 
-    # DEBUG INFO
     st.write(f"🔎 Pages found: {len(pages)}")
 
-    # FALLBACK if nothing found
     if not pages:
-        st.warning("⚠️ Trying fallback (homepage only)...")
-
-        try:
-            result = firecrawl.scrape_url(website, formats=["markdown"])
-            pages = [{
-                "url": website,
-                "markdown": result.get("markdown", "")
-            }]
-        except:
-            st.error("❌ Unable to fetch website data.")
-            st.stop()
+        st.error("❌ Unable to fetch website data.")
+        st.stop()
 
     company = extract_company_name(pages, website)
 

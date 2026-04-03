@@ -70,14 +70,11 @@ input {
 st.markdown("""
 <div style="
     position: fixed;
-    top: 15px;
+    top: 70px;   /* 🔥 move below Streamlit header */
     right: 25px;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
-    background-color: #f5f5f5;
-    padding: 6px 12px;
-    border-radius: 8px;
-    border: 1px solid #ccc;
+    color: black;
     z-index: 9999;
 ">
     Manoj | MIDAS IT

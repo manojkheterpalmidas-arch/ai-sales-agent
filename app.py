@@ -16,9 +16,32 @@ client = OpenAI(
 # -------------------------------
 # CRAWL
 # -------------------------------
-def crawl_site(url):
-    crawl = firecrawl.crawl_url(url, limit=8)
-    return crawl["data"]
+def crawl_site(base_url):
+    pages_to_try = [
+        base_url,
+        base_url + "/about",
+        base_url + "/about-us",
+        base_url + "/services",
+        base_url + "/projects",
+        base_url + "/portfolio",
+        base_url + "/team",
+        base_url + "/people",
+        base_url + "/who-we-are"
+    ]
+
+    pages = []
+
+    for url in pages_to_try:
+        try:
+            result = firecrawl.scrape_url(url, formats=["markdown"])
+            pages.append({
+                "url": url,
+                "markdown": result.get("markdown", "")
+            })
+        except:
+            continue
+
+    return pages
 
 # -------------------------------
 # EXTRACT PEOPLE (REAL)

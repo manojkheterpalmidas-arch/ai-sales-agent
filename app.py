@@ -296,7 +296,7 @@ Do not invent names.
 # -------------------------------
 # -------------------------------
 # UI
-# -------------------------------
+
 st.title("🚀 MIDAS Sales Intelligence Tool")
 
 website = st.text_input("Enter Company Website URL")
@@ -313,10 +313,8 @@ if st.button("Run Analysis"):
     with st.spinner("🔍 Crawling..."):
         pages = crawl_site(website)
 
-    st.write(f"Pages crawled: {len(pages)}")
-
     if not pages:
-        st.error("Could not extract data.")
+        st.error("Could not extract data")
         st.stop()
 
     company = extract_company_name(pages, website)
@@ -331,15 +329,6 @@ if st.button("Run Analysis"):
     with st.spinner("🧠 Analyzing..."):
         result = analyze(company, text, people, projects)
 
-    # 🔥 MAIN OUTPUT FIRST
+    # 🔥 ONLY MAIN OUTPUT
     st.subheader("📊 Insights")
     st.write(result)
-
-    # 🔥 BACKGROUND DATA (COLLAPSIBLE)
-    with st.expander("🔍 View Extracted Data (Engineers & Projects)"):
-
-        st.subheader("👷 Engineers")
-        st.write(people if people else "No engineers found")
-
-        st.subheader("🏗️ Projects")
-        st.write(projects)

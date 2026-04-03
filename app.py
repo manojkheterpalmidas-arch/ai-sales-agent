@@ -11,38 +11,31 @@ from urllib.parse import urljoin, urlparse
 st.markdown("""
 <style>
 
-/* Base input */
-.stTextInput > div > div > input {
+/* Fix ONLY the text input box */
+.stTextInput input {
     background-color: white !important;
     color: black !important;
-    border: 1px solid #333 !important;   /* black border */
-    caret-color: black !important;
-    padding: 10px;
-    border-radius: 8px;
-}
-
-/* Focus (when typing) */
-.stTextInput > div > div > input:focus {
-    border: 1px solid #333 !important;   /* keep black */
-    outline: none !important;
-    box-shadow: none !important;         /* remove glow */
-}
-
-/* 🚨 OVERRIDE RED ERROR STATE */
-.stTextInput > div > div > input:invalid {
     border: 1px solid #333 !important;
-    box-shadow: none !important;
+    caret-color: black !important;
+    border-radius: 8px;
+    padding: 10px;
 }
 
-/* ALSO override Streamlit-specific focus ring */
-.stTextInput div[data-baseweb="input"] {
-    border-color: #333 !important;
-}
-
-/* Remove any red highlight */
-input {
+/* Focus state */
+.stTextInput input:focus {
+    border: 1px solid #333 !important;
     outline: none !important;
     box-shadow: none !important;
+}
+
+/* Remove red error styling safely */
+.stTextInput input:invalid {
+    border: 1px solid #333 !important;
+}
+
+/* Placeholder */
+.stTextInput input::placeholder {
+    color: #888 !important;
 }
 
 </style>

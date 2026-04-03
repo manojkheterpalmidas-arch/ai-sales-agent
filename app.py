@@ -5,6 +5,26 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 
+st.set_page_config(page_title="MIDAS Sales Intelligence Tool", layout="wide")
+
+st.markdown("""
+    <style>
+    body {
+        background-color: white;
+        color: black;
+    }
+    .stApp {
+        background-color: white;
+        color: black;
+    }
+    h1, h2, h3, h4, h5, h6 {
+        color: black;
+    }
+    p, div {
+        color: black;
+    }
+    </style>
+""", unsafe_allow_html=True)
 # -------------------------------
 # INIT
 # -------------------------------
@@ -211,7 +231,7 @@ Do not invent names.
             {"role": "system", "content": "You are a structural engineering sales expert."},
             {"role": "user", "content": prompt}
         ],
-        temperature=0.2,
+        temperature=0.1,
         max_tokens=2000
     )
 

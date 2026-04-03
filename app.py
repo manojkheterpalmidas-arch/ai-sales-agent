@@ -13,40 +13,40 @@ client = OpenAI(
 )
 
 # -------------------------------
-# CLEAN TEXT (CRITICAL)
+# SMART CRAWL
 # -------------------------------
-def clean_text(text):
-    lines = text.split("\n")
-    filtered = []
+def crawl_site(base_url):
+    try:
+        crawl = firecrawl.crawl_url(
+            base_url,
+            limit=10  # crawl multiple pages
+        )
 
-    for line in lines:
-        if len(line.strip()) > 40:
-            filtered.append(line.strip())
+        pages = crawl["data"]
 
-    return "\n".join(filtered[:200])
+        content = {
+            "team": "",
+            "projects": "",
+            "company": ""
+        }
 
+        for page in pages:
+            url = page["url"]
+            text = page.get("markdown", "")
 
-# -------------------------------
-# CRAWL MULTIPLE PAGES
-# -------------------------------
-def crawl_pages(base_url):
-    pages = {
-        "home": base_url,
-        "services": base_url + "/services",
-        "projects": base_url + "/projects",
-        "team": base_url + "/team"
-    }
+            if any(x in url.lower() for x in ["team", "people", "about"]):
+                content["team"] += text
 
-    data = {}
+            elif any(x in url.lower() for x in ["project", "portfolio"]):
+                content["projects"] += text
 
-    for key, url in pages.items():
-        try:
-            result = firecrawl.scrape_url(url, formats=["markdown"])
-            data[key] = result["markdown"]
-        except:
-            data[key] = ""
+            else:
+                content["company"] += text
 
-    return data
+        return content
+
+    except Exception as e:
+        return {"team": "", "projects": "", "company": ""}
 
 
 # -------------------------------
@@ -56,123 +56,79 @@ def call_llm(prompt):
     response = client.chat.completions.create(
         model="deepseek-chat",
         messages=[
-            {"role": "system", "content": "You are a precise and strict engineering analyst. Never guess."},
+            {"role": "system", "content": "You are an engineering analyst. Be accurate, but reasonable."},
             {"role": "user", "content": prompt}
         ],
-        temperature=0.1,
-        max_tokens=600
+        temperature=0.2,
+        max_tokens=700
     )
 
     return response.choices[0].message.content
 
 
 # -------------------------------
-# COMPANY ANALYSIS (STRICT)
+# ANALYSIS
 # -------------------------------
-def analyze_company(home_text, services_text):
-    text = clean_text(home_text + "\n" + services_text)
-
+def analyze_company(text):
     prompt = f"""
-Extract ONLY factual company information.
+Analyze this company.
 
-DATA:
 {text}
 
 Return:
-- What the company does
+- What they do
 - Engineering sectors
 - Capabilities
-
-If not found → say NOT AVAILABLE
-
-NO assumptions.
 """
     return call_llm(prompt)
 
 
-# -------------------------------
-# PROJECT ANALYSIS
-# -------------------------------
-def analyze_projects(project_text):
-    project_text = clean_text(project_text)
-
+def analyze_projects(text):
     prompt = f"""
-Extract ONLY real project information.
+Extract project types.
 
-DATA:
-{project_text}
+{text}
 
 Return:
-- Types of structures mentioned (bridges, buildings, geotech, etc.)
-- Project categories
-
-If unclear → say NOT CLEAR
-
-NO guessing.
+- Types of structures
+- Engineering focus
 """
     return call_llm(prompt)
 
 
-# -------------------------------
-# PEOPLE EXTRACTION (STRICT)
-# -------------------------------
-def extract_people(team_text):
-    team_text = clean_text(team_text)
-
+def extract_people(text):
     prompt = f"""
-Extract ONLY real people explicitly mentioned.
+Extract key engineering people.
 
-DATA:
-{team_text}
+{text}
 
-Rules:
-- ONLY extract names that clearly appear
-- DO NOT guess
-- If none → return "NOT FOUND"
-
-Focus ONLY:
+Focus:
 - Structural engineers
-- Bridge engineers
-- Geotechnical engineers
 - Technical directors
+- Bridge / geotech engineers
 
 Format:
 Name | Role | Decision Level
-
-Decision Level:
-- Technical Director → Decision Maker
-- Senior Engineer → Influencer
 """
     return call_llm(prompt)
 
 
-# -------------------------------
-# SALES STRATEGY (DATA-BASED)
-# -------------------------------
 def generate_strategy(company, comp, proj, people):
     prompt = f"""
-You are a sales engineer selling FEM software (MIDAS).
+You are selling MIDAS software.
 
-Use ONLY the provided data.
+Company: {company}
 
-Company Info:
+Data:
 {comp}
-
-Projects:
 {proj}
-
-People:
 {people}
 
-If data is missing → say "INSUFFICIENT DATA"
-
 Return:
-- Where FEM is used (ONLY if clear)
-- Pain points (based on projects)
-- Best person to approach
-- Practical sales approach
-
-NO guessing.
+- FEM usage
+- Pain points
+- Target people
+- Sales approach
 """
     return call_llm(prompt)
 
@@ -180,9 +136,9 @@ NO guessing.
 # -------------------------------
 # UI
 # -------------------------------
-st.set_page_config(page_title="MIDAS Sales Intelligence V4.5", layout="wide")
+st.set_page_config(page_title="MIDAS Sales Intelligence V4.6", layout="wide")
 
-st.title("🚀 MIDAS Sales Intelligence (Accurate Mode)")
+st.title("🚀 MIDAS Sales Intelligence (Smart Crawl)")
 
 company = st.text_input("Company Name")
 website = st.text_input("Website URL")
@@ -192,13 +148,13 @@ if st.button("Run Analysis"):
     if not website.startswith("http"):
         website = "https://" + website
 
-    with st.spinner("🔥 Crawling website..."):
-        data = crawl_pages(website)
+    with st.spinner("🔥 Smart crawling website..."):
+        data = crawl_site(website)
 
     with st.spinner("🧠 Analyzing company..."):
-        comp = analyze_company(data["home"], data["services"])
+        comp = analyze_company(data["company"])
 
-    with st.spinner("🏗️ Extracting projects..."):
+    with st.spinner("🏗️ Analyzing projects..."):
         proj = analyze_projects(data["projects"])
 
     with st.spinner("👥 Extracting people..."):
@@ -207,21 +163,18 @@ if st.button("Run Analysis"):
     with st.spinner("📊 Generating strategy..."):
         strategy = generate_strategy(company, comp, proj, people)
 
-    # -------------------------------
-    # DISPLAY
-    # -------------------------------
     col1, col2 = st.columns(2)
 
     with col1:
         st.subheader("🏢 Company Overview")
         st.write(comp)
 
-        st.subheader("🏗️ Projects & Structures")
+        st.subheader("🏗️ Projects")
         st.write(proj)
 
     with col2:
-        st.subheader("👥 Key People")
+        st.subheader("👥 People")
         st.write(people)
 
-        st.subheader("📊 Sales Strategy")
+        st.subheader("📊 Strategy")
         st.write(strategy)

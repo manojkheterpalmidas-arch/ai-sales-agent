@@ -198,29 +198,29 @@ def is_valid_name(text):
 # ENGINEER EXTRACTION
 # -------------------------------
 def extract_people(pages):
-    people = []
-
-    role_keywords = [
-        "engineer", "structural", "bridge",
-        "geotechnical", "civil",
-        "principal", "senior", "lead"
-    ]
+    people = set()
 
     for page in pages:
         lines = page["markdown"].split("\n")
 
-        for i in range(len(lines) - 1):
-            name = lines[i].strip()
-            role = lines[i + 1].strip().lower()
+        for line in lines:
+            text = line.strip()
 
-            if not is_valid_name(name):
+            # Step 1: detect valid human name
+            if not is_valid_name(text):
                 continue
 
-            if any(k in role for k in role_keywords):
-                people.append(f"{name} | {lines[i+1].strip()}")
+            # Step 2: check surrounding context (looser)
+            context = page["markdown"].lower()
 
-    return list(set(people))[:8]
+            if any(k in context for k in [
+                "engineer", "structural", "bridge",
+                "geotechnical", "civil",
+                "principal", "senior", "design"
+            ]):
+                people.add(text)
 
+    return list(people)[:10]
 # -------------------------------
 # PROJECTS
 # -------------------------------

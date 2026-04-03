@@ -286,9 +286,9 @@ Provide FULL report:
 1. What company does
 2. Engineering focus
 3. FEM opportunity
-4. Sales strategy (DETAILED)
+4. Sales strategy
 
-Do not stop early.
+
 """
 
     response = client.chat.completions.create(

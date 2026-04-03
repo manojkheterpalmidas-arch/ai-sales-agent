@@ -218,6 +218,7 @@ Do not invent names.
     return response.choices[0].message.content
 
 # -------------------------------
+# -------------------------------
 # UI
 # -------------------------------
 st.title("🚀 MIDAS Sales Intelligence Tool")
@@ -244,20 +245,25 @@ if st.button("Run Analysis"):
 
     company = extract_company_name(pages, website)
 
-    st.subheader("Company")
+    st.subheader("🏢 Company")
     st.write(company)
 
     people = extract_people(pages)
     projects = extract_projects(pages)
     text = extract_company_text(pages)
 
-    result = analyze(company, text, people, projects)
+    with st.spinner("🧠 Analyzing..."):
+        result = analyze(company, text, people, projects)
 
-    st.subheader("Engineers")
-    st.write(people if people else "No engineers found")
-
-    st.subheader("Projects")
-    st.write(projects)
-
-    st.subheader("Insights")
+    # 🔥 MAIN OUTPUT FIRST
+    st.subheader("📊 Insights")
     st.write(result)
+
+    # 🔥 BACKGROUND DATA (COLLAPSIBLE)
+    with st.expander("🔍 View Extracted Data (Engineers & Projects)"):
+
+        st.subheader("👷 Engineers")
+        st.write(people if people else "No engineers found")
+
+        st.subheader("🏗️ Projects")
+        st.write(projects)

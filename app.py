@@ -11,7 +11,7 @@ from urllib.parse import urljoin, urlparse
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
-PASSCODE = "1234"  # 🔥 change this
+PASSCODE = "5487"  # 🔥 change this
 
 if not st.session_state.authenticated:
     st.title("🔐 Secure Access")

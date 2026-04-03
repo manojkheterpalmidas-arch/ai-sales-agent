@@ -8,14 +8,47 @@ from urllib.parse import urljoin, urlparse
 # -------------------------------
 # PAGE CONFIG + WHITE UI
 # -------------------------------
-st.set_page_config(page_title="MIDAS Sales Intelligence Tool", layout="wide")
-
 st.markdown("""
 <style>
-.stApp { background-color: white !important; color: black !important; }
-html, body, [class*="css"]  { color: black !important; }
-h1, h2, h3, h4 { color: black !important; }
-pre, code { background-color: #f5f5f5 !important; color: black !important; }
+
+/* Main background */
+.stApp {
+    background-color: white !important;
+    color: black !important;
+}
+
+/* Text */
+html, body, [class*="css"] {
+    color: black !important;
+}
+
+/* INPUT BOX FIX (THIS IS THE KEY) */
+.stTextInput > div > div > input {
+    background-color: white !important;
+    color: black !important;
+    border: 1px solid #ccc !important;
+}
+
+/* Also handle textarea just in case */
+textarea {
+    background-color: white !important;
+    color: black !important;
+}
+
+/* Button */
+button {
+    background-color: #f0f0f0 !important;
+    color: black !important;
+    border: 1px solid #ccc !important;
+}
+
+/* Remove dark focus glow */
+input:focus {
+    outline: none !important;
+    box-shadow: none !important;
+    border: 1px solid #999 !important;
+}
+
 </style>
 """, unsafe_allow_html=True)
 

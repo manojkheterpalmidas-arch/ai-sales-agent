@@ -1,0 +1,6 @@
+streamlit
+firecrawl-py
+openai
+beautifulsoup4
+requests
+duckduckgo-search

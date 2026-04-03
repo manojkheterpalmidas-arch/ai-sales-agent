@@ -14,7 +14,7 @@ client = OpenAI(
 )
 
 # -------------------------------
-# FALLBACK SCRAPER
+# SCRAPER
 # -------------------------------
 def fallback_scrape(url):
     try:
@@ -23,7 +23,7 @@ def fallback_scrape(url):
         soup = BeautifulSoup(res.text, "html.parser")
 
         text = soup.get_text(separator="\n")
-        return text[:4000]
+        return text[:6000]  # 🔥 increased
 
     except:
         return ""
@@ -42,7 +42,6 @@ def get_internal_links(base_url):
 
         for a in soup.find_all("a", href=True):
             href = a["href"]
-
             full_url = urljoin(base_url, href)
 
             if urlparse(full_url).netloc == domain:
@@ -54,24 +53,19 @@ def get_internal_links(base_url):
         return []
 
 # -------------------------------
-# SMART DEEP CRAWL
+# DEEP CRAWL
 # -------------------------------
 def crawl_site(base_url):
     pages = []
 
-    # 🔥 Always include homepage
+    # homepage
     homepage = fallback_scrape(base_url)
-
     if homepage:
-        pages.append({
-            "url": base_url,
-            "markdown": homepage
-        })
+        pages.append({"url": base_url, "markdown": homepage})
 
-    # 🔥 Discover links
+    # discover links
     links = get_internal_links(base_url)
 
-    # prioritize important pages
     priority_keywords = ["about", "team", "people", "project", "service", "portfolio"]
 
     sorted_links = sorted(
@@ -80,15 +74,12 @@ def crawl_site(base_url):
         reverse=True
     )
 
-    # 🔥 Crawl top 10 links
-    for link in sorted_links[:10]:
+    # 🔥 increased from 10 → 15
+    for link in sorted_links[:15]:
         text = fallback_scrape(link)
 
         if text:
-            pages.append({
-                "url": link,
-                "markdown": text
-            })
+            pages.append({"url": link, "markdown": text})
 
     return pages
 
@@ -127,7 +118,7 @@ def extract_projects(pages):
     keywords = [
         "bridge", "tunnel", "geotechnical",
         "structural", "infrastructure",
-        "highway", "rail"
+        "rail", "highway"
     ]
 
     found = set()
@@ -142,15 +133,16 @@ def extract_projects(pages):
     return list(found)
 
 # -------------------------------
-# COMBINE TEXT (DEEP)
+# COMBINE TEXT (DEEPER)
 # -------------------------------
 def extract_company_text(pages):
     combined = ""
 
-    for page in pages[:8]:
-        combined += page["markdown"][:3000]
+    # 🔥 increased pages + depth
+    for page in pages[:12]:
+        combined += page["markdown"][:4000]
 
-    return combined[:15000]
+    return combined[:25000]  # 🔥 increased total cap
 
 # -------------------------------
 # LLM ANALYSIS
@@ -176,8 +168,8 @@ Analyze:
 4. Where FEM is used
 5. Sales strategy
 
-Be practical and realistic.
-DO NOT invent names or projects.
+Be realistic and specific.
+DO NOT invent data.
 """
 
     response = client.chat.completions.create(
@@ -187,7 +179,7 @@ DO NOT invent names or projects.
             {"role": "user", "content": prompt}
         ],
         temperature=0.2,
-        max_tokens=800
+        max_tokens=900
     )
 
     return response.choices[0].message.content
@@ -195,9 +187,9 @@ DO NOT invent names or projects.
 # -------------------------------
 # UI
 # -------------------------------
-st.set_page_config(page_title="MIDAS Sales Intelligence V6", layout="wide")
+st.set_page_config(page_title="MIDAS Sales Intelligence V6.1", layout="wide")
 
-st.title("🚀 MIDAS Sales Intelligence Tool (Deep Crawl)")
+st.title("🚀 MIDAS Sales Intelligence Tool (Deep Crawl + High Accuracy)")
 
 website = st.text_input("Enter Company Website URL")
 

@@ -5,39 +5,33 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 
+
 # -------------------------------
 # PAGE CONFIG + WHITE UI
 # -------------------------------
+st.set_page_config(page_title="MIDAS Sales Intelligence Tool", layout="wide")
+
 st.markdown("""
 <style>
+.stApp { background-color: white !important; color: black !important; }
+html, body, [class*="css"] { color: black !important; }
 
-/* Fix ONLY the text input box */
-.stTextInput input {
+.stTextInput > div > div > input {
     background-color: white !important;
     color: black !important;
-    border: 1px solid #333 !important;
-    caret-color: black !important;
-    border-radius: 8px;
-    padding: 10px;
+    border: 1px solid #ccc !important;
 }
 
-/* Focus state */
-.stTextInput input:focus {
-    border: 1px solid #333 !important;
-    outline: none !important;
-    box-shadow: none !important;
+button {
+    background-color: #f0f0f0 !important;
+    color: black !important;
+    border: 1px solid #ccc !important;
 }
 
-/* Remove red error styling safely */
-.stTextInput input:invalid {
-    border: 1px solid #333 !important;
+pre, code {
+    background-color: #f5f5f5 !important;
+    color: black !important;
 }
-
-/* Placeholder */
-.stTextInput input::placeholder {
-    color: #888 !important;
-}
-
 </style>
 """, unsafe_allow_html=True)
 

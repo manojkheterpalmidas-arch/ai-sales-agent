@@ -34,7 +34,38 @@ pre, code {
 }
 </style>
 """, unsafe_allow_html=True)
+st.markdown("""
+<style>
 
+/* INPUT BOX FIX (with visible cursor) */
+.stTextInput > div > div > input {
+    background-color: white !important;
+    color: black !important;
+    border: 1px solid #ccc !important;
+    caret-color: black !important;   /* 🔥 THIS FIXES THE CURSOR */
+    font-size: 16px;
+    padding: 10px;
+}
+
+/* Focus state (when clicking input) */
+.stTextInput > div > div > input:focus {
+    border: 1px solid #888 !important;
+    outline: none !important;
+    box-shadow: 0 0 0 1px #aaa !important;
+}
+
+/* Placeholder text */
+.stTextInput > div > div > input::placeholder {
+    color: #888 !important;
+}
+
+/* Smooth typing feel */
+input {
+    transition: all 0.2s ease-in-out;
+}
+
+</style>
+""", unsafe_allow_html=True)
 # -------------------------------
 # INIT
 # -------------------------------

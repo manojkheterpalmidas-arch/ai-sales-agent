@@ -1,9 +1,8 @@
 import streamlit as st
 from openai import OpenAI
 import re
-import requests
-from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
+from playwright.sync_api import sync_playwright
 
 # -------------------------------
 # INIT
@@ -14,69 +13,81 @@ client = OpenAI(
 )
 
 # -------------------------------
-# SCRAPER
+# BROWSER SCRAPER
 # -------------------------------
-def fallback_scrape(url):
+def browser_scrape(url):
     try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        res = requests.get(url, headers=headers, timeout=10)
-        soup = BeautifulSoup(res.text, "html.parser")
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
 
-        text = soup.get_text(separator="\n")
-        return text[:6000]
+            page.goto(url, timeout=30000)
+            page.wait_for_timeout(3000)
+
+            content = page.inner_text("body")
+
+            browser.close()
+
+            return content[:6000]
 
     except:
         return ""
 
 # -------------------------------
-# GET INTERNAL LINKS
+# GET LINKS
 # -------------------------------
 def get_internal_links(base_url):
+    links = set()
+
     try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        res = requests.get(base_url, headers=headers, timeout=10)
-        soup = BeautifulSoup(res.text, "html.parser")
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
 
-        links = set()
-        domain = urlparse(base_url).netloc
+            page.goto(base_url, timeout=30000)
 
-        for a in soup.find_all("a", href=True):
-            href = a["href"]
-            full_url = urljoin(base_url, href)
+            anchors = page.query_selector_all("a")
+            domain = urlparse(base_url).netloc
 
-            if urlparse(full_url).netloc == domain:
-                links.add(full_url)
+            for a in anchors:
+                href = a.get_attribute("href")
+                if not href:
+                    continue
 
-        return list(links)
+                full_url = urljoin(base_url, href)
+
+                if urlparse(full_url).netloc == domain:
+                    links.add(full_url)
+
+            browser.close()
 
     except:
-        return []
+        pass
+
+    return list(links)
 
 # -------------------------------
-# DEEP CRAWL
+# CRAWL
 # -------------------------------
 def crawl_site(base_url):
     pages = []
 
-    homepage = fallback_scrape(base_url)
+    homepage = browser_scrape(base_url)
     if homepage:
         pages.append({"url": base_url, "markdown": homepage})
 
     links = get_internal_links(base_url)
 
-    priority_keywords = [
-        "about", "team", "people", "project",
-        "service", "portfolio", "expertise"
-    ]
+    priority = ["team", "people", "about", "project", "service"]
 
     sorted_links = sorted(
         links,
-        key=lambda x: any(p in x.lower() for p in priority_keywords),
+        key=lambda x: any(p in x.lower() for p in priority),
         reverse=True
     )
 
-    for link in sorted_links[:15]:
-        text = fallback_scrape(link)
+    for link in sorted_links[:10]:
+        text = browser_scrape(link)
 
         if text:
             pages.append({"url": link, "markdown": text})
@@ -94,55 +105,56 @@ def extract_company_name(pages, url):
             if 5 < len(line) < 80:
                 return line.strip()
 
-    domain = re.sub(r"https?://(www\.)?", "", url)
-    return domain.split("/")[0]
+    return urlparse(url).netloc
 
 # -------------------------------
-# CLEAN PEOPLE EXTRACTION (FIXED)
+# STRICT NAME VALIDATION
+# -------------------------------
+def is_valid_name(text):
+    # must be two words, capitalized
+    if not re.match(r"^[A-Z][a-z]+ [A-Z][a-z]+$", text):
+        return False
+
+    # reject common non-human words
+    blacklist = [
+        "management", "services", "engineering",
+        "infrastructure", "impact", "solutions",
+        "consulting", "group", "project",
+        "rail", "transport", "design"
+    ]
+
+    if any(b in text.lower() for b in blacklist):
+        return False
+
+    return True
+
+# -------------------------------
+# ENGINEER EXTRACTION (FIXED)
 # -------------------------------
 def extract_people(pages):
     people = []
 
-    keywords = [
+    role_keywords = [
         "engineer", "structural", "bridge",
-        "geotechnical", "civil", "infrastructure",
-        "transport", "rail", "highway",
-        "principal", "senior", "lead", "director"
-    ]
-
-    blacklist = [
-        "rail", "street", "road", "project",
-        "infrastructure", "transport", "network",
-        "scheme", "upgrade", "city", "services"
+        "geotechnical", "civil",
+        "principal", "senior", "lead"
     ]
 
     for page in pages:
         lines = page["markdown"].split("\n")
 
         for i in range(len(lines) - 1):
-            name_line = lines[i].strip()
-            role_line = lines[i + 1].strip().lower()
+            name = lines[i].strip()
+            role = lines[i + 1].strip().lower()
 
-            # strict human name pattern
-            if re.match(r"^[A-Z][a-z]+ [A-Z][a-z]+$", name_line):
+            # strict validation
+            if not is_valid_name(name):
+                continue
 
-                # filter fake names
-                if any(b in name_line.lower() for b in blacklist):
-                    continue
+            if any(k in role for k in role_keywords):
+                people.append(f"{name} | {lines[i+1].strip()}")
 
-                # role must match engineering context
-                if any(k in role_line for k in keywords):
-
-                    people.append(f"{name_line} | {lines[i+1].strip()}")
-
-    # remove duplicates + extra filtering
-    clean_people = list(set(people))
-    clean_people = [
-        p for p in clean_people
-        if not any(x in p.lower() for x in ["rail", "project", "scheme"])
-    ]
-
-    return clean_people[:8]
+    return list(set(people))[:8]
 
 # -------------------------------
 # PROJECT DETECTION
@@ -150,9 +162,8 @@ def extract_people(pages):
 def extract_projects(pages):
     keywords = [
         "bridge", "tunnel", "geotechnical",
-        "structural", "infrastructure",
-        "rail", "highway", "transport",
-        "foundation", "steel", "concrete"
+        "structural", "rail", "highway",
+        "infrastructure"
     ]
 
     found = set()
@@ -167,12 +178,12 @@ def extract_projects(pages):
     return list(found)
 
 # -------------------------------
-# COMBINE TEXT
+# TEXT COMBINE
 # -------------------------------
 def extract_company_text(pages):
     combined = ""
 
-    for page in pages[:12]:
+    for page in pages[:10]:
         combined += page["markdown"][:4000]
 
     return combined[:25000]
@@ -181,29 +192,33 @@ def extract_company_text(pages):
 # LLM ANALYSIS
 # -------------------------------
 def analyze(company, text, people, projects):
+    if not people:
+        people_text = "No engineers found on website"
+    else:
+        people_text = people
+
     prompt = f"""
 Company: {company}
 
 Website Data:
 {text}
 
-Engineers Found:
-{people}
+Engineers:
+{people_text}
 
-Project Types:
+Projects:
 {projects}
 
 Analyze:
 
 1. What the company does
 2. Engineering capabilities
-3. Relevant engineers (from list only)
+3. Relevant engineers (if any)
 4. Where FEM is used
 5. Sales opportunities
 
-If no engineers found → clearly say that.
-
-DO NOT invent names.
+If no engineers found, clearly say that.
+Do NOT invent names.
 """
 
     response = client.chat.completions.create(
@@ -221,9 +236,7 @@ DO NOT invent names.
 # -------------------------------
 # UI
 # -------------------------------
-st.set_page_config(page_title="MIDAS Sales Intelligence V6.3", layout="wide")
-
-st.title("🚀 MIDAS Sales Intelligence Tool (Accurate Engineer Detection)")
+st.title("🚀 MIDAS Sales Intelligence Tool (Clean Engineer Detection)")
 
 website = st.text_input("Enter Company Website URL")
 
@@ -236,18 +249,18 @@ if st.button("Run Analysis"):
     if not website.startswith("http"):
         website = "https://" + website
 
-    with st.spinner("🔍 Deep crawling website..."):
+    with st.spinner("🌐 Crawling website..."):
         pages = crawl_site(website)
 
     st.write(f"🔎 Pages crawled: {len(pages)}")
 
     if not pages:
-        st.error("❌ Could not extract data.")
+        st.error("❌ Website blocked or not accessible.")
         st.stop()
 
     company = extract_company_name(pages, website)
 
-    st.subheader("🏢 Detected Company")
+    st.subheader("🏢 Company")
     st.write(company)
 
     people = extract_people(pages)
@@ -260,12 +273,15 @@ if st.button("Run Analysis"):
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("👷 Relevant Engineers")
-        st.write(people)
+        st.subheader("👷 Engineers")
+        if people:
+            st.write(people)
+        else:
+            st.write("No engineers found on website")
 
-        st.subheader("🏗️ Project Types")
+        st.subheader("🏗️ Projects")
         st.write(projects)
 
     with col2:
-        st.subheader("📊 Analysis")
+        st.subheader("📊 Insights")
         st.write(result)

@@ -29,7 +29,7 @@ def fallback_scrape(url):
         return ""
 
 # -------------------------------
-# GET LINKS
+# GET INTERNAL LINKS
 # -------------------------------
 def get_internal_links(base_url):
     try:
@@ -98,27 +98,22 @@ def extract_company_name(pages, url):
     return domain.split("/")[0]
 
 # -------------------------------
-# ENGINEER EXTRACTION (IMPROVED)
+# CLEAN PEOPLE EXTRACTION (FIXED)
 # -------------------------------
 def extract_people(pages):
     people = []
 
     keywords = [
-        # core roles
-        "engineer", "engineering", "consultant",
+        "engineer", "structural", "bridge",
+        "geotechnical", "civil", "infrastructure",
+        "transport", "rail", "highway",
+        "principal", "senior", "lead", "director"
+    ]
 
-        # disciplines
-        "structural", "bridge", "geotechnical",
-        "civil", "infrastructure", "transport",
-        "rail", "highway", "tunnel", "marine",
-
-        # advanced
-        "design engineer", "analysis", "simulation",
-        "finite element", "fea", "fem",
-
-        # seniority
-        "senior", "principal", "lead", "director",
-        "head", "manager"
+    blacklist = [
+        "rail", "street", "road", "project",
+        "infrastructure", "transport", "network",
+        "scheme", "upgrade", "city", "services"
     ]
 
     for page in pages:
@@ -128,15 +123,26 @@ def extract_people(pages):
             name_line = lines[i].strip()
             role_line = lines[i + 1].strip().lower()
 
-            # detect valid name
+            # strict human name pattern
             if re.match(r"^[A-Z][a-z]+ [A-Z][a-z]+$", name_line):
 
-                # check role relevance
+                # filter fake names
+                if any(b in name_line.lower() for b in blacklist):
+                    continue
+
+                # role must match engineering context
                 if any(k in role_line for k in keywords):
 
                     people.append(f"{name_line} | {lines[i+1].strip()}")
 
-    return list(set(people))[:10]
+    # remove duplicates + extra filtering
+    clean_people = list(set(people))
+    clean_people = [
+        p for p in clean_people
+        if not any(x in p.lower() for x in ["rail", "project", "scheme"])
+    ]
+
+    return clean_people[:8]
 
 # -------------------------------
 # PROJECT DETECTION
@@ -195,7 +201,8 @@ Analyze:
 4. Where FEM is used
 5. Sales opportunities
 
-Be practical.
+If no engineers found → clearly say that.
+
 DO NOT invent names.
 """
 
@@ -214,9 +221,9 @@ DO NOT invent names.
 # -------------------------------
 # UI
 # -------------------------------
-st.set_page_config(page_title="MIDAS Sales Intelligence V6.2", layout="wide")
+st.set_page_config(page_title="MIDAS Sales Intelligence V6.3", layout="wide")
 
-st.title("🚀 MIDAS Sales Intelligence Tool (Improved Engineer Detection)")
+st.title("🚀 MIDAS Sales Intelligence Tool (Accurate Engineer Detection)")
 
 website = st.text_input("Enter Company Website URL")
 

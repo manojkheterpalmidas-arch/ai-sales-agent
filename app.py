@@ -5,7 +5,27 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 
+# -------------------------------
+# 🔐 AUTH SYSTEM
+# -------------------------------
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
 
+PASSCODE = "1234"  # 🔥 change this
+
+if not st.session_state.authenticated:
+    st.title("🔐 Secure Access")
+
+    code = st.text_input("Enter 4-digit passcode", type="password")
+
+    if st.button("Unlock"):
+        if code == PASSCODE:
+            st.session_state.authenticated = True
+            st.rerun()
+        else:
+            st.error("Incorrect passcode")
+
+    st.stop()
 # -------------------------------
 # PAGE CONFIG + WHITE UI
 # -------------------------------

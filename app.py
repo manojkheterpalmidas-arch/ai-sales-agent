@@ -14,7 +14,7 @@ client = OpenAI(
 )
 
 # -------------------------------
-# CRAWL
+# SMART SCRAPE (NO crawl_url)
 # -------------------------------
 def crawl_site(base_url):
     pages_to_try = [
@@ -34,34 +34,56 @@ def crawl_site(base_url):
     for url in pages_to_try:
         try:
             result = firecrawl.scrape_url(url, formats=["markdown"])
-            pages.append({
-                "url": url,
-                "markdown": result.get("markdown", "")
-            })
+            text = result.get("markdown", "")
+
+            if len(text) > 200:
+                pages.append({
+                    "url": url,
+                    "markdown": text
+                })
         except:
             continue
 
     return pages
 
+
 # -------------------------------
-# EXTRACT PEOPLE (REAL)
+# AUTO DETECT COMPANY NAME
+# -------------------------------
+def extract_company_name(pages, url):
+    for page in pages:
+        text = page.get("markdown", "")
+        lines = text.split("\n")
+
+        for line in lines[:10]:
+            if 5 < len(line) < 80:
+                return line.strip()
+
+    # fallback to domain
+    domain = re.sub(r"https?://(www\.)?", "", url)
+    return domain.split("/")[0]
+
+
+# -------------------------------
+# EXTRACT PEOPLE (BASIC BUT REAL)
 # -------------------------------
 def extract_people(pages):
-    people = []
+    people = set()
 
     for page in pages:
         text = page.get("markdown", "")
 
-        # find name-like patterns
         matches = re.findall(r"\b[A-Z][a-z]+ [A-Z][a-z]+\b", text)
 
-        for m in matches[:5]:
-            people.append(m)
+        for m in matches:
+            if len(m.split()) == 2:
+                people.add(m)
 
-    return list(set(people))[:5]
+    return list(people)[:5]
+
 
 # -------------------------------
-# EXTRACT PROJECT KEYWORDS
+# EXTRACT PROJECT TYPES
 # -------------------------------
 def extract_projects(pages):
     keywords = ["bridge", "tunnel", "geotechnical", "structural", "infrastructure"]
@@ -77,19 +99,21 @@ def extract_projects(pages):
 
     return list(found)
 
+
 # -------------------------------
-# EXTRACT COMPANY TEXT
+# COMBINE TEXT
 # -------------------------------
 def extract_company_text(pages):
     combined = ""
 
     for page in pages[:3]:
-        combined += page.get("markdown", "")[:1000]
+        combined += page.get("markdown", "")[:1500]
 
     return combined
 
+
 # -------------------------------
-# LLM ANALYSIS (ONLY INTERPRET)
+# LLM ANALYSIS (CONTROLLED)
 # -------------------------------
 def analyze(company, text, people, projects):
     prompt = f"""
@@ -104,16 +128,15 @@ People Found:
 Project Types:
 {projects}
 
-Analyze:
+Analyze STRICTLY:
 
 1. What company does
 2. Engineering capabilities
-3. Which people are decision makers
-4. Where FEM is used
-5. Sales strategy
+3. Who are decision makers (from given names only)
+4. Where FEM is used (only if clear)
+5. Sales strategy (based on projects)
 
-ONLY use given data.
-Do NOT invent anything.
+DO NOT invent names or projects.
 """
 
     response = client.chat.completions.create(
@@ -128,31 +151,48 @@ Do NOT invent anything.
 
     return response.choices[0].message.content
 
+
 # -------------------------------
 # UI
 # -------------------------------
-st.title("🚀 MIDAS Sales Intelligence V5 (Accurate Mode)")
+st.set_page_config(page_title="MIDAS Sales Intelligence", layout="wide")
 
-company = st.text_input("Company Name")
-website = st.text_input("Website URL")
+st.title("🚀 MIDAS Sales Intelligence Tool")
+
+website = st.text_input("Enter Company Website URL")
 
 if st.button("Run Analysis"):
 
-    with st.spinner("Crawling..."):
+    if not website.startswith("http"):
+        website = "https://" + website
+
+    with st.spinner("🔍 Crawling website..."):
         pages = crawl_site(website)
 
-    people = extract_people(pages)
-    projects = extract_projects(pages)
-    text = extract_company_text(pages)
+    if not pages:
+        st.error("No data found. Try another website.")
+    else:
+        company = extract_company_name(pages, website)
 
-    with st.spinner("Analyzing..."):
-        result = analyze(company, text, people, projects)
+        st.subheader("🏢 Detected Company")
+        st.write(company)
 
-    st.subheader("👥 Extracted People (Raw)")
-    st.write(people)
+        people = extract_people(pages)
+        projects = extract_projects(pages)
+        text = extract_company_text(pages)
 
-    st.subheader("🏗️ Detected Project Types")
-    st.write(projects)
+        with st.spinner("🧠 Analyzing..."):
+            result = analyze(company, text, people, projects)
 
-    st.subheader("📊 Analysis")
-    st.write(result)
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.subheader("👥 Extracted People (Raw)")
+            st.write(people)
+
+            st.subheader("🏗️ Project Types")
+            st.write(projects)
+
+        with col2:
+            st.subheader("📊 Analysis")
+            st.write(result)

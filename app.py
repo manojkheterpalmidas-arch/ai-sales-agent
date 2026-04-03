@@ -5,82 +5,35 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 
+# -------------------------------
+# PAGE CONFIG + WHITE UI
+# -------------------------------
 st.set_page_config(page_title="MIDAS Sales Intelligence Tool", layout="wide")
 
 st.markdown("""
 <style>
+.stApp { background-color: white !important; color: black !important; }
+html, body, [class*="css"] { color: black !important; }
 
-/* Main app background */
-.stApp {
+.stTextInput > div > div > input {
     background-color: white !important;
     color: black !important;
+    border: 1px solid #ccc !important;
 }
 
-/* Text */
-html, body, [class*="css"]  {
-    color: black !important;
-}
-
-/* Headers */
-h1, h2, h3, h4 {
-    color: black !important;
-}
-
-/* Input boxes */
-input, textarea {
-    background-color: white !important;
-    color: black !important;
-}
-
-/* Buttons */
 button {
     background-color: #f0f0f0 !important;
     color: black !important;
     border: 1px solid #ccc !important;
 }
 
-/* Expanders (your "bars") */
-details {
-    background-color: white !important;
-    border: 1px solid #ddd !important;
-    border-radius: 8px;
-    padding: 10px;
-}
-
-/* Expander header */
-summary {
-    color: black !important;
-    font-weight: 600;
-}
-
-/* Code blocks (very important — your dark bars) */
-code {
+pre, code {
     background-color: #f5f5f5 !important;
     color: black !important;
 }
-
-/* Preformatted blocks */
-pre {
-    background-color: #f5f5f5 !important;
-    color: black !important;
-    border-radius: 8px;
-    padding: 10px;
-}
-
-/* Data boxes / JSON display */
-.stCodeBlock {
-    background-color: #f5f5f5 !important;
-    color: black !important;
-}
-
-/* Expandable JSON (your current dark box issue) */
-.css-1d391kg, .css-1v0mbdj {
-    background-color: white !important;
-    color: black !important;
-}
-
 </style>
 """, unsafe_allow_html=True)
+
 # -------------------------------
 # INIT
 # -------------------------------
@@ -90,25 +43,20 @@ client = OpenAI(
 )
 
 # -------------------------------
-# SCRAPER (STREAMLIT SAFE)
+# SCRAPER
 # -------------------------------
 def scrape_page(url):
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0",
-            "Accept-Language": "en-US"
-        }
-
+        headers = {"User-Agent": "Mozilla/5.0"}
         res = requests.get(url, headers=headers, timeout=10)
 
         if res.status_code != 200:
             return ""
 
         soup = BeautifulSoup(res.text, "html.parser")
-
         text = soup.get_text(separator="\n")
-        return text[:6000]
 
+        return text[:6000]
     except:
         return ""
 
@@ -119,8 +67,7 @@ def get_links(base_url):
     links = set()
 
     try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        res = requests.get(base_url, headers=headers, timeout=10)
+        res = requests.get(base_url, headers={"User-Agent": "Mozilla/5.0"})
         soup = BeautifulSoup(res.text, "html.parser")
 
         domain = urlparse(base_url).netloc
@@ -131,7 +78,6 @@ def get_links(base_url):
 
             if urlparse(full).netloc == domain:
                 links.add(full)
-
     except:
         pass
 
@@ -149,7 +95,12 @@ def crawl_site(base_url):
 
     links = get_links(base_url)
 
-    priority = ["team", "people", "about", "project", "service"]
+    # 🔥 improved priority (important)
+    priority = [
+        "team", "people", "our-team",
+        "leadership", "directors",
+        "about", "staff"
+    ]
 
     sorted_links = sorted(
         links,
@@ -170,21 +121,18 @@ def crawl_site(base_url):
 # -------------------------------
 def extract_company_name(pages, url):
     for page in pages:
-        lines = page["markdown"].split("\n")
-
-        for line in lines[:10]:
+        for line in page["markdown"].split("\n")[:10]:
             if 5 < len(line) < 80:
                 return line.strip()
 
     return urlparse(url).netloc
 
 # -------------------------------
-# STRICT NAME VALIDATION
+# NAME VALIDATION (IMPROVED)
 # -------------------------------
 def is_valid_name(text):
     text = text.strip()
 
-    # allow 2–3 word names
     if not re.match(r"^[A-Z][a-z]+(?:[-'][A-Z][a-z]+)?(?: [A-Z][a-z]+){1,2}$", text):
         return False
 
@@ -193,13 +141,13 @@ def is_valid_name(text):
         "infrastructure", "impact", "solutions",
         "consulting", "group", "project",
         "rail", "transport", "design",
-        "director", "associate", "engineer"
+        "department", "team", "business"
     ]
 
     return not any(b in text.lower() for b in blacklist)
 
 # -------------------------------
-# ENGINEER EXTRACTION
+# PEOPLE EXTRACTION (FIXED)
 # -------------------------------
 def extract_people(pages):
     people = set()
@@ -207,24 +155,25 @@ def extract_people(pages):
     for page in pages:
         lines = page["markdown"].split("\n")
 
-        for line in lines:
+        for i, line in enumerate(lines):
             text = line.strip()
 
-            # Step 1: detect valid human name
             if not is_valid_name(text):
                 continue
 
-            # Step 2: check surrounding context (looser)
-            context = page["markdown"].lower()
+            # 🔥 local context (key fix)
+            context = " ".join(lines[max(0, i-3): i+3]).lower()
 
             if any(k in context for k in [
                 "engineer", "structural", "bridge",
                 "geotechnical", "civil",
-                "principal", "senior", "design"
+                "principal", "senior", "director",
+                "associate", "lead", "manager"
             ]):
                 people.add(text)
 
-    return list(people)[:10]
+    return list(people)[:15]
+
 # -------------------------------
 # PROJECTS
 # -------------------------------
@@ -257,11 +206,11 @@ def extract_company_text(pages):
     return combined[:25000]
 
 # -------------------------------
-# LLM
+# LLM ANALYSIS (IMPROVED PROMPT)
 # -------------------------------
 def analyze(company, text, people, projects):
     if not people:
-        people = "No engineers found on website"
+        people = "No people found"
 
     prompt = f"""
 Company: {company}
@@ -269,20 +218,24 @@ Company: {company}
 Data:
 {text}
 
-Engineers:
+People Found:
 {people}
 
 Projects:
 {projects}
 
-Analyze:
-- What company does
-- Engineering focus
-- Relevant engineers
-- FEM opportunities
-- Sales approach
+Provide FULL structured report:
 
-Do not invent names.
+1. What the company does
+2. Engineering capabilities
+3. Key personnel (categorise into Directors, Senior/Principal Engineers, Engineers)
+4. Where FEM can be applied
+5. Recommended sales approach
+
+IMPORTANT:
+- Use ONLY provided names
+- Do NOT invent names
+- Complete all sections fully
 """
 
     response = client.chat.completions.create(
@@ -298,9 +251,8 @@ Do not invent names.
     return response.choices[0].message.content
 
 # -------------------------------
-# -------------------------------
 # UI
-
+# -------------------------------
 st.title("🚀 MIDAS Sales Intelligence Tool")
 
 website = st.text_input("Enter Company Website URL")
@@ -333,6 +285,5 @@ if st.button("Run Analysis"):
     with st.spinner("🧠 Analyzing..."):
         result = analyze(company, text, people, projects)
 
-    # 🔥 ONLY MAIN OUTPUT
     st.subheader("📊 Insights")
     st.write(result)

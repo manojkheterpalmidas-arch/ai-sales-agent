@@ -23,13 +23,13 @@ def fallback_scrape(url):
         soup = BeautifulSoup(res.text, "html.parser")
 
         text = soup.get_text(separator="\n")
-        return text[:6000]  # 🔥 increased
+        return text[:6000]
 
     except:
         return ""
 
 # -------------------------------
-# GET INTERNAL LINKS
+# GET LINKS
 # -------------------------------
 def get_internal_links(base_url):
     try:
@@ -58,15 +58,16 @@ def get_internal_links(base_url):
 def crawl_site(base_url):
     pages = []
 
-    # homepage
     homepage = fallback_scrape(base_url)
     if homepage:
         pages.append({"url": base_url, "markdown": homepage})
 
-    # discover links
     links = get_internal_links(base_url)
 
-    priority_keywords = ["about", "team", "people", "project", "service", "portfolio"]
+    priority_keywords = [
+        "about", "team", "people", "project",
+        "service", "portfolio", "expertise"
+    ]
 
     sorted_links = sorted(
         links,
@@ -74,7 +75,6 @@ def crawl_site(base_url):
         reverse=True
     )
 
-    # 🔥 increased from 10 → 15
     for link in sorted_links[:15]:
         text = fallback_scrape(link)
 
@@ -98,18 +98,45 @@ def extract_company_name(pages, url):
     return domain.split("/")[0]
 
 # -------------------------------
-# PEOPLE EXTRACTION
+# ENGINEER EXTRACTION (IMPROVED)
 # -------------------------------
 def extract_people(pages):
-    people = set()
+    people = []
+
+    keywords = [
+        # core roles
+        "engineer", "engineering", "consultant",
+
+        # disciplines
+        "structural", "bridge", "geotechnical",
+        "civil", "infrastructure", "transport",
+        "rail", "highway", "tunnel", "marine",
+
+        # advanced
+        "design engineer", "analysis", "simulation",
+        "finite element", "fea", "fem",
+
+        # seniority
+        "senior", "principal", "lead", "director",
+        "head", "manager"
+    ]
 
     for page in pages:
-        matches = re.findall(r"\b[A-Z][a-z]+ [A-Z][a-z]+\b", page["markdown"])
+        lines = page["markdown"].split("\n")
 
-        for m in matches:
-            people.add(m)
+        for i in range(len(lines) - 1):
+            name_line = lines[i].strip()
+            role_line = lines[i + 1].strip().lower()
 
-    return list(people)[:8]
+            # detect valid name
+            if re.match(r"^[A-Z][a-z]+ [A-Z][a-z]+$", name_line):
+
+                # check role relevance
+                if any(k in role_line for k in keywords):
+
+                    people.append(f"{name_line} | {lines[i+1].strip()}")
+
+    return list(set(people))[:10]
 
 # -------------------------------
 # PROJECT DETECTION
@@ -118,7 +145,8 @@ def extract_projects(pages):
     keywords = [
         "bridge", "tunnel", "geotechnical",
         "structural", "infrastructure",
-        "rail", "highway"
+        "rail", "highway", "transport",
+        "foundation", "steel", "concrete"
     ]
 
     found = set()
@@ -133,16 +161,15 @@ def extract_projects(pages):
     return list(found)
 
 # -------------------------------
-# COMBINE TEXT (DEEPER)
+# COMBINE TEXT
 # -------------------------------
 def extract_company_text(pages):
     combined = ""
 
-    # 🔥 increased pages + depth
     for page in pages[:12]:
         combined += page["markdown"][:4000]
 
-    return combined[:25000]  # 🔥 increased total cap
+    return combined[:25000]
 
 # -------------------------------
 # LLM ANALYSIS
@@ -154,7 +181,7 @@ Company: {company}
 Website Data:
 {text}
 
-People Found:
+Engineers Found:
 {people}
 
 Project Types:
@@ -164,18 +191,18 @@ Analyze:
 
 1. What the company does
 2. Engineering capabilities
-3. Decision makers (from given names only)
+3. Relevant engineers (from list only)
 4. Where FEM is used
-5. Sales strategy
+5. Sales opportunities
 
-Be realistic and specific.
-DO NOT invent data.
+Be practical.
+DO NOT invent names.
 """
 
     response = client.chat.completions.create(
         model="deepseek-chat",
         messages=[
-            {"role": "system", "content": "You are a senior engineering sales analyst."},
+            {"role": "system", "content": "You are a structural engineering sales expert."},
             {"role": "user", "content": prompt}
         ],
         temperature=0.2,
@@ -187,9 +214,9 @@ DO NOT invent data.
 # -------------------------------
 # UI
 # -------------------------------
-st.set_page_config(page_title="MIDAS Sales Intelligence V6.1", layout="wide")
+st.set_page_config(page_title="MIDAS Sales Intelligence V6.2", layout="wide")
 
-st.title("🚀 MIDAS Sales Intelligence Tool (Deep Crawl + High Accuracy)")
+st.title("🚀 MIDAS Sales Intelligence Tool (Improved Engineer Detection)")
 
 website = st.text_input("Enter Company Website URL")
 
@@ -226,7 +253,7 @@ if st.button("Run Analysis"):
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("👥 Extracted People")
+        st.subheader("👷 Relevant Engineers")
         st.write(people)
 
         st.subheader("🏗️ Project Types")

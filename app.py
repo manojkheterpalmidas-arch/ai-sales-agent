@@ -4,6 +4,7 @@ import re
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
+import urllib.parse
 
 # -------------------------------
 # 🔐 AUTH SYSTEM
@@ -315,10 +316,19 @@ IMPORTANT:
     )
 
     return response.choices[0].message.content
+    
+# -------------------------------
+# Linkedin Search Link
+# -------------------------------   
+def generate_linkedin_search(name):
+query = urllib.parse.quote(name)
+return f"https://www.linkedin.com/search/results/people/?keywords={query}"
+
 
 # -------------------------------
 # UI
 # -------------------------------
+
 st.title("🚀 MIDAS Sales Intelligence Tool")
 
 website = st.text_input("Enter Company Website URL")
@@ -347,6 +357,15 @@ if st.button("Run Analysis"):
     people = extract_people(pages)
     projects = extract_projects(pages)
     text = extract_company_text(pages)
+
+    st.subheader("👷 Key People")
+
+if people:
+    for person in people:
+        link = generate_linkedin_search(person)
+        st.markdown(f"**{person}**  \n[🔗 Search on LinkedIn]({link})")
+else:
+    st.write("No people found")
 
     with st.spinner("🧠 Analyzing..."):
         result = analyze(company, text, people, projects)

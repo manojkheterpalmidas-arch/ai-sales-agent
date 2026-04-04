@@ -294,11 +294,11 @@ Provide FULL structured report:
 
 1. What the company does - summarise in brief bullet points and with one point mentioning all the office locations
 2. Engineering capabilities - summarise in brief bullet points
-3. Key personnel (categorise into Directors, Senior/Principal Engineers, Engineers and make a table)
+3. Key personnel (categorise into Directors, Senior/Principal Engineers, Engineers and make a table) - Reject that does not sound like a name
 4. Where FEM can be applied - summarise in brief bullet points
 5. Recommended sales approach as a professional sales consultant - summarise in brief bullet points - name the heading as Recommended Sales Approach
 6. Mention what are the open vacancies for bridge/structural/geotech - check if there is any mention for FEA software in requirement - name the heading as Open Vacancy
-7. Create clickable LinkedIn search URL for the key personnel names only with no mention of company or place in the search (seperately for each) - name the heading as LinkedIn Search
+7. Create "Clickable" LinkedIn Search URL for the key personnel names only with no mention of company or place in the search (seperately for each) - name the heading as LinkedIn Search
  
 
 IMPORTANT:

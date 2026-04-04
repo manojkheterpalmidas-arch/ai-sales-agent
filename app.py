@@ -292,18 +292,19 @@ Projects:
 
 Provide FULL structured report:
 
-1. What the company does - summarise in 2-3 lines
-2. Engineering capabilities
+1. What the company does - summarise in brief bullet points
+2. Engineering capabilities - summarise in brief bullet points
 3. Key personnel (categorise into Directors, Senior/Principal Engineers, Engineers and make a table)
-4. Where FEM can be applied 
-5. Recommended sales approach as a professional sales consultant
-6. Create Clickable LinkedIn search URL for the key personnel names only with no mention of company or place in the search (seperately for each) - name the heading as LinkedIn Search
+4. Where FEM can be applied - summarise in brief bullet points
+5. Recommended sales approach as a professional sales consultant - summarise in brief bullet points
+6. Mention what are the open vacancies for bridge/structural/geotech - check if there is any mention for FEA software in requirement
+7. Create Clickable LinkedIn search URL for the key personnel names only with no mention of company or place in the search (seperately for each) - name the heading as LinkedIn Search
  
 
 IMPORTANT:
 - Use ONLY provided names
-- Do NOT invent names
-- Complete all sections fully
+- Do NOT invent names 
+- Complete all sections fully with sticking to the data provided
 """
 
     response = client.chat.completions.create(

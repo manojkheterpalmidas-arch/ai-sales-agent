@@ -205,7 +205,7 @@ Projects:
 {projects}
 
 TASK:
-- Filter real people only
+- Filter real people only (do not mention filtered)
 - Categorise into roles
 - Do full company + sales analysis
 

@@ -368,6 +368,7 @@ If information is missing → explicitly state “Not found”
 Keep output concise, structured, and professional
 Do NOT repeat information across sections
 Make sure LinkedIn links are clickable
+Fill all the 10 points
 """
 
     response = client.chat.completions.create(

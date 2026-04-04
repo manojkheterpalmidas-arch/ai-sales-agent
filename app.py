@@ -292,7 +292,7 @@ Projects:
 
 Provide FULL structured report:
 
-1. What the company does - summarise in brief bullet points and with one point mentioning all the office locations
+1. What the company does - summarise in brief bullet points and with one point mentioning all the office locations - only mention names of the city in the location
 2. Engineering capabilities - summarise in brief bullet points
 3. Key personnel (categorise into Directors, Senior/Principal Engineers, Engineers and make a table) - Reject that does not sound like a name
 4. Where FEM can be applied - summarise in brief bullet points

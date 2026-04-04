@@ -297,6 +297,8 @@ Provide FULL structured report:
 3. Key personnel (categorise into Directors, Senior/Principal Engineers, Engineers)
 4. Where FEM can be applied from MIDAS IT products
 5. Recommended sales approach as a professional sales consultant
+6. Create LinkedIn search URL for the key personnel
+ 
 
 IMPORTANT:
 - Use ONLY provided names

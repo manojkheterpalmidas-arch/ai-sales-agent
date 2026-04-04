@@ -305,6 +305,7 @@ IMPORTANT:
 - Use ONLY provided names
 - Do NOT invent names 
 - Complete all sections fully with sticking to the data provided
+- Make sure LinkedIn search links are clickable
 """
 
     response = client.chat.completions.create(

@@ -4,8 +4,6 @@ import re
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
-import urllib.parse
-import json
 
 # -------------------------------
 # 🔐 AUTH SYSTEM
@@ -13,7 +11,7 @@ import json
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
-PASSCODE = "5487"
+PASSCODE = "5487"  # 🔥 change this
 
 if not st.session_state.authenticated:
     st.title("🔐 Secure Access")
@@ -28,27 +26,26 @@ if not st.session_state.authenticated:
             st.error("Incorrect passcode")
 
     st.stop()
-
 # -------------------------------
-# PAGE CONFIG
+# PAGE CONFIG + WHITE UI
 # -------------------------------
 st.set_page_config(page_title="MIDAS Sales Intelligence Tool", layout="wide")
 
 st.markdown("""
 <style>
 .stApp { background-color: white !important; color: black !important; }
-html, body { color: black !important; }
+html, body, [class*="css"] { color: black !important; }
 
-.stTextInput input {
+.stTextInput > div > div > input {
     background-color: white !important;
     color: black !important;
     border: 1px solid #ccc !important;
-    caret-color: black !important;
 }
 
 button {
     background-color: #f0f0f0 !important;
     color: black !important;
+    border: 1px solid #ccc !important;
 }
 
 pre, code {
@@ -57,17 +54,52 @@ pre, code {
 }
 </style>
 """, unsafe_allow_html=True)
-
-# -------------------------------
-# HEADER TAG
-# -------------------------------
 st.markdown("""
-<div style="position: fixed; top: 70px; right: 25px;
-font-size: 14px; font-weight: 600;">
-Manoj | MIDAS IT
-</div>
+<style>
+
+/* INPUT BOX FIX (with visible cursor) */
+.stTextInput > div > div > input {
+    background-color: white !important;
+    color: black !important;
+    border: 1px solid #ccc !important;
+    caret-color: black !important;   /* 🔥 THIS FIXES THE CURSOR */
+    font-size: 16px;
+    padding: 10px;
+}
+
+/* Focus state (when clicking input) */
+.stTextInput > div > div > input:focus {
+    border: 1px solid #888 !important;
+    outline: none !important;
+    box-shadow: 0 0 0 1px #aaa !important;
+}
+
+/* Placeholder text */
+.stTextInput > div > div > input::placeholder {
+    color: #888 !important;
+}
+
+/* Smooth typing feel */
+input {
+    transition: all 0.2s ease-in-out;
+}
+
+</style>
 """, unsafe_allow_html=True)
 
+st.markdown("""
+<div style="
+    position: fixed;
+    top: 70px;   /* 🔥 move below Streamlit header */
+    right: 25px;
+    font-size: 14px;
+    font-weight: 600;
+    color: black;
+    z-index: 9999;
+">
+    Manoj | MIDAS IT
+</div>
+""", unsafe_allow_html=True)
 # -------------------------------
 # INIT
 # -------------------------------
@@ -81,27 +113,35 @@ client = OpenAI(
 # -------------------------------
 def scrape_page(url):
     try:
-        res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        headers = {"User-Agent": "Mozilla/5.0"}
+        res = requests.get(url, headers=headers, timeout=10)
+
         if res.status_code != 200:
             return ""
 
         soup = BeautifulSoup(res.text, "html.parser")
-        return soup.get_text(separator="\n")[:6000]
+        text = soup.get_text(separator="\n")
+
+        return text[:6000]
     except:
         return ""
 
 # -------------------------------
-# LINKS
+# LINK DISCOVERY
 # -------------------------------
 def get_links(base_url):
     links = set()
+
     try:
         res = requests.get(base_url, headers={"User-Agent": "Mozilla/5.0"})
         soup = BeautifulSoup(res.text, "html.parser")
+
         domain = urlparse(base_url).netloc
 
         for a in soup.find_all("a", href=True):
-            full = urljoin(base_url, a["href"])
+            href = a["href"]
+            full = urljoin(base_url, href)
+
             if urlparse(full).netloc == domain:
                 links.add(full)
     except:
@@ -121,7 +161,12 @@ def crawl_site(base_url):
 
     links = get_links(base_url)
 
-    priority = ["team", "people", "about", "leadership"]
+    # 🔥 improved priority (important)
+    priority = [
+        "team", "people", "our-team",
+        "leadership", "directors",
+        "about", "staff"
+    ]
 
     sorted_links = sorted(
         links,
@@ -131,6 +176,7 @@ def crawl_site(base_url):
 
     for link in sorted_links[:10]:
         text = scrape_page(link)
+
         if text:
             pages.append({"url": link, "markdown": text})
 
@@ -144,38 +190,70 @@ def extract_company_name(pages, url):
         for line in page["markdown"].split("\n")[:10]:
             if 5 < len(line) < 80:
                 return line.strip()
+
     return urlparse(url).netloc
 
 # -------------------------------
-# NAME VALIDATION
+# NAME VALIDATION (IMPROVED)
 # -------------------------------
 def is_valid_name(text):
-    return bool(re.match(r"^[A-Z][a-z]+(?: [A-Z][a-z]+){1,2}$", text))
+    text = text.strip()
+
+    if not re.match(r"^[A-Z][a-z]+(?:[-'][A-Z][a-z]+)?(?: [A-Z][a-z]+){1,2}$", text):
+        return False
+
+    blacklist = [
+        "management", "services", "engineering",
+        "infrastructure", "impact", "solutions",
+        "consulting", "group", "project",
+        "rail", "transport", "design",
+        "department", "team", "business"
+    ]
+
+    return not any(b in text.lower() for b in blacklist)
 
 # -------------------------------
-# EXTRACT PEOPLE
+# PEOPLE EXTRACTION (FIXED)
 # -------------------------------
 def extract_people(pages):
     people = set()
 
     for page in pages:
-        for line in page["markdown"].split("\n"):
-            name = line.strip()
+        lines = page["markdown"].split("\n")
 
-            if is_valid_name(name):
-                people.add(name)
+        for i, line in enumerate(lines):
+            text = line.strip()
 
-    return list(people)[:20]
+            if not is_valid_name(text):
+                continue
+
+            # 🔥 local context (key fix)
+            context = " ".join(lines[max(0, i-3): i+3]).lower()
+
+            if any(k in context for k in [
+                "engineer", "structural", "bridge",
+                "geotechnical", "civil",
+                "principal", "senior", "director",
+                "associate", "lead", "manager"
+            ]):
+                people.add(text)
+
+    return list(people)[:15]
 
 # -------------------------------
 # PROJECTS
 # -------------------------------
 def extract_projects(pages):
-    keywords = ["bridge", "tunnel", "geotechnical", "rail", "highway"]
+    keywords = [
+        "bridge", "tunnel", "geotechnical",
+        "structural", "rail", "highway"
+    ]
+
     found = set()
 
     for page in pages:
         text = page["markdown"].lower()
+
         for k in keywords:
             if k in text:
                 found.add(k)
@@ -186,56 +264,50 @@ def extract_projects(pages):
 # TEXT
 # -------------------------------
 def extract_company_text(pages):
-    return "".join([p["markdown"][:4000] for p in pages])[:25000]
+    combined = ""
+
+    for page in pages[:10]:
+        combined += page["markdown"][:4000]
+
+    return combined[:25000]
 
 # -------------------------------
-# LLM ANALYSIS
+# LLM ANALYSIS (IMPROVED PROMPT)
 # -------------------------------
 def analyze(company, text, people, projects):
+    if not people:
+        people = "No people found"
 
     prompt = f"""
 Company: {company}
 
-Website Data:
+Data:
 {text}
 
-Extracted Name Candidates:
+People Found:
 {people}
 
 Projects:
 {projects}
 
-----------------------------------------
-TASK
-----------------------------------------
+Provide FULL structured report:
 
-1. Identify ONLY real human names from the candidate list
-2. Remove anything that is:
-   - company
-   - project
-   - department
-   - heading
+1. What the company does
+2. Engineering capabilities
+3. Key personnel (categorise into Directors, Senior/Principal Engineers, Engineers)
+4. Where FEM can be applied from MIDAS IT products
+5. Recommended sales approach as a professional sales consultant
 
-3. Return result STRICTLY in this JSON format:
-
-{{
-  "people": ["Name 1", "Name 2", "Name 3"]
-}}
-
-----------------------------------------
-RULES
-----------------------------------------
-
-- ONLY use provided names
-- DO NOT invent names
-- DO NOT include explanations
-- RETURN JSON ONLY
+IMPORTANT:
+- Use ONLY provided names
+- Do NOT invent names
+- Complete all sections fully
 """
 
     response = client.chat.completions.create(
         model="deepseek-chat",
         messages=[
-            {"role": "system", "content": "You return only clean JSON outputs."},
+            {"role": "system", "content": "You are a structural engineering sales expert."},
             {"role": "user", "content": prompt}
         ],
         temperature=0.1,
@@ -243,22 +315,6 @@ RULES
     )
 
     return response.choices[0].message.content
-# -------------------------------
-# CLEAN NAMES FROM LLM OUTPUT
-# -------------------------------
-def extract_clean_names_from_llm(response_text):
-    try:
-        data = json.loads(response_text)
-        return data.get("people", [])
-    except:
-        return []
-
-# -------------------------------
-# LINKEDIN
-# -------------------------------
-def generate_linkedin_search(name):
-    query = urllib.parse.quote(name)
-    return f"https://www.linkedin.com/search/results/people/?keywords={query}"
 
 # -------------------------------
 # UI
@@ -284,6 +340,10 @@ if st.button("Run Analysis"):
         st.stop()
 
     company = extract_company_name(pages, website)
+
+    st.subheader("🏢 Company")
+    st.write(company)
+
     people = extract_people(pages)
     projects = extract_projects(pages)
     text = extract_company_text(pages)
@@ -291,20 +351,5 @@ if st.button("Run Analysis"):
     with st.spinner("🧠 Analyzing..."):
         result = analyze(company, text, people, projects)
 
-    st.subheader("🏢 Company")
-    st.write(company)
-
     st.subheader("📊 Insights")
     st.write(result)
-
-    # 🔥 CLEAN PEOPLE
-    clean_people = extract_clean_names_from_llm(result)
-
-    st.subheader("👷 Key People")
-
-    if clean_people:
-        for person in clean_people:
-            link = generate_linkedin_search(person)
-            st.markdown(f"**{person}**  \n[🔗 Search on LinkedIn]({link})")
-    else:
-        st.write("No valid people identified")

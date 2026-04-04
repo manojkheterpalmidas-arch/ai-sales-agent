@@ -195,27 +195,46 @@ def analyze(company, text, people, projects):
     prompt = f"""
 Company: {company}
 
-Data:
+Website Data:
 {text}
 
-People:
+Extracted Name Candidates:
 {people}
 
 Projects:
 {projects}
 
-TASK:
-- Filter real people only (do not mention filtered)
-- Categorise into roles
-- Do full company + sales analysis
+----------------------------------------
+TASK
+----------------------------------------
 
-DO NOT invent names.
+1. Identify ONLY real human names from the candidate list
+2. Remove anything that is:
+   - company
+   - project
+   - department
+   - heading
+
+3. Return result STRICTLY in this JSON format:
+
+{{
+  "people": ["Name 1", "Name 2", "Name 3"]
+}}
+
+----------------------------------------
+RULES
+----------------------------------------
+
+- ONLY use provided names
+- DO NOT invent names
+- DO NOT include explanations
+- RETURN JSON ONLY
 """
 
     response = client.chat.completions.create(
         model="deepseek-chat",
         messages=[
-            {"role": "system", "content": "You are a strict engineering sales analyst."},
+            {"role": "system", "content": "You return only clean JSON outputs."},
             {"role": "user", "content": prompt}
         ],
         temperature=0.1,
@@ -223,7 +242,6 @@ DO NOT invent names.
     )
 
     return response.choices[0].message.content
-
 # -------------------------------
 # CLEAN NAMES FROM LLM OUTPUT
 # -------------------------------

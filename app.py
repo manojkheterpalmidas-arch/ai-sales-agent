@@ -326,6 +326,7 @@ Key pain points inferred from services/projects
 Value positioning strategy
 Likely objections
 Suggested first conversation angle
+All should be in seperate bullet points
 6. Open Vacancy Insights
 
 (Heading must be exactly: Open Vacancy)
@@ -350,25 +351,26 @@ Expansion indicators
 Technical maturity
 Project types
 Max 5 bullet points
-9. Pre-Meeting Cheat Sheet 
+9. Pre-Meeting Cheat Sheet for MIDAS IT FEA Software Solutions
 
 Provide:
 
 3 things to mention
 3 smart questions to ask
 1 strong opening line
-10. Confidence & Data Gaps 
-For each section, assign:
-High / Medium / Low confidence
+
 Clearly mention missing or weak data areas
 IMPORTANT RULES:
+For each section, assign:
+High / Medium / Low confidence
+
 Use ONLY provided data
 Do NOT hallucinate or infer beyond evidence
 If information is missing → explicitly state “Not found”
 Keep output concise, structured, and professional
 Do NOT repeat information across sections
 Make sure LinkedIn links are clickable
-Fill all the 10 points
+Fill all the 9 points
 """
 
     response = client.chat.completions.create(

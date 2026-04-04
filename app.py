@@ -358,7 +358,7 @@ if st.button("Run Analysis"):
     projects = extract_projects(pages)
     text = extract_company_text(pages)
 
-    st.subheader("👷 Key People")
+st.subheader("👷 Key People")
 
 if people:
     for person in people:

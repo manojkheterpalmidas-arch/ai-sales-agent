@@ -282,43 +282,91 @@ def extract_company_text(pages):
 
     return combined[:25000]
 
+
 # -------------------------------
-# LLM ANALYSIS (IMPROVED PROMPT)
+# LLM ANALYSIS (STRICT + RELIABLE)
 # -------------------------------
 def analyze(company, text, people, projects):
     if not people:
-        people = "No people found"
+        people = []
 
     prompt = f"""
 Company: {company}
 
-Data:
+Website Data:
 {text}
 
-People Found:
+Extracted Name Candidates:
 {people}
 
 Projects:
 {projects}
 
-Provide FULL structured report:
+----------------------------------------
+TASK
+----------------------------------------
+
+You must analyse the company and STRICTLY use the provided name candidates.
+
+STEP 1 — FILTER REAL PEOPLE
+From the "Extracted Name Candidates":
+- Keep ONLY real human names
+- REMOVE anything that is:
+  - company name
+  - project name
+  - department
+  - generic term (e.g. Asset Management, Infrastructure, etc.)
+
+STEP 2 — CLASSIFY PEOPLE
+Categorise ONLY valid individuals into:
+
+- Directors / Leadership
+- Senior / Principal Engineers
+- Engineers
+
+If no valid people exist, clearly say:
+"No individual names found on the website"
+
+STEP 3 — BUSINESS ANALYSIS
+Provide:
 
 1. What the company does
-2. Engineering capabilities
-3. Key personnel (categorise into Directors, Senior/Principal Engineers, Engineers)
-4. Where FEM can be applied
-5. Recommended sales approach
+2. Engineering capabilities (focus on structural / bridge / geotech relevance)
+3. Where FEM software can be applied
+4. Recommended sales approach (very practical, not generic)
 
-IMPORTANT:
-- Use ONLY provided names
-- Do NOT invent names
-- Complete all sections fully
+----------------------------------------
+RULES (VERY IMPORTANT)
+----------------------------------------
+
+- DO NOT invent names
+- DO NOT guess names
+- ONLY use names from the provided list
+- If list is wrong → return empty
+- Be concise but insightful
+- Focus on real engineering value
+
+----------------------------------------
+OUTPUT FORMAT
+----------------------------------------
+
+Use clear sections:
+
+1. What the Company Does  
+2. Engineering Capabilities  
+3. Key Personnel  
+4. FEM Opportunities  
+5. Sales Strategy  
+
 """
 
     response = client.chat.completions.create(
         model="deepseek-chat",
         messages=[
-            {"role": "system", "content": "You are a structural engineering sales expert."},
+            {
+                "role": "system",
+                "content": "You are a strict data analyst for engineering sales. You only trust provided data and never hallucinate names."
+            },
             {"role": "user", "content": prompt}
         ],
         temperature=0.1,
@@ -326,7 +374,6 @@ IMPORTANT:
     )
 
     return response.choices[0].message.content
-    
 # -------------------------------
 # Linkedin Search Link
 # -------------------------------   

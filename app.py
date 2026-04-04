@@ -349,36 +349,38 @@ if st.button("Run Analysis"):
         st.error("Could not extract data")
         st.stop()
 
+    # -------------------------------
+    # PROCESS DATA (INSIDE BUTTON!)
+    # -------------------------------
     company = extract_company_name(pages, website)
 
-    st.subheader("🏢 Company")
-    st.write(company)
-people = extract_people(pages)
-projects = extract_projects(pages)
-text = extract_company_text(pages)
+    people = extract_people(pages)
+    projects = extract_projects(pages)
+    text = extract_company_text(pages)
 
-with st.spinner("🧠 Analyzing..."):
-    result = analyze(company, text, people, projects)
-
-st.subheader("📊 Insights")
-st.write(result)
-
-# ✅ ADD HERE (correct place)
-st.subheader("👷 Key People")
-
-if people:
-    for person in people:
-        link = generate_linkedin_search(person)
-        st.markdown(f"**{person}**  \n[🔗 Search on LinkedIn]({link})")
-else:
-    st.write("No people found")
-
-
-
-
-
+    # -------------------------------
+    # ANALYSIS
+    # -------------------------------
     with st.spinner("🧠 Analyzing..."):
         result = analyze(company, text, people, projects)
 
+    # -------------------------------
+    # OUTPUT
+    # -------------------------------
+    st.subheader("🏢 Company")
+    st.write(company)
+
     st.subheader("📊 Insights")
     st.write(result)
+
+    # -------------------------------
+    # LINKEDIN SEARCH LINKS
+    # -------------------------------
+    st.subheader("👷 Key People")
+
+    if people:
+        for person in people:
+            link = generate_linkedin_search(person)
+            st.markdown(f"**{person}**  \n[🔗 Search on LinkedIn]({link})")
+    else:
+        st.write("No people found")

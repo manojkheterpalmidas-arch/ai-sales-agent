@@ -12,7 +12,7 @@ import urllib.parse
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
-PASSCODE = "5487"  # 🔥 change this
+PASSCODE = "5487"
 
 if not st.session_state.authenticated:
     st.title("🔐 Secure Access")
@@ -27,26 +27,27 @@ if not st.session_state.authenticated:
             st.error("Incorrect passcode")
 
     st.stop()
+
 # -------------------------------
-# PAGE CONFIG + WHITE UI
+# PAGE CONFIG
 # -------------------------------
 st.set_page_config(page_title="MIDAS Sales Intelligence Tool", layout="wide")
 
 st.markdown("""
 <style>
 .stApp { background-color: white !important; color: black !important; }
-html, body, [class*="css"] { color: black !important; }
+html, body { color: black !important; }
 
-.stTextInput > div > div > input {
+.stTextInput input {
     background-color: white !important;
     color: black !important;
     border: 1px solid #ccc !important;
+    caret-color: black !important;
 }
 
 button {
     background-color: #f0f0f0 !important;
     color: black !important;
-    border: 1px solid #ccc !important;
 }
 
 pre, code {
@@ -55,52 +56,17 @@ pre, code {
 }
 </style>
 """, unsafe_allow_html=True)
+
+# -------------------------------
+# HEADER TAG
+# -------------------------------
 st.markdown("""
-<style>
-
-/* INPUT BOX FIX (with visible cursor) */
-.stTextInput > div > div > input {
-    background-color: white !important;
-    color: black !important;
-    border: 1px solid #ccc !important;
-    caret-color: black !important;   /* 🔥 THIS FIXES THE CURSOR */
-    font-size: 16px;
-    padding: 10px;
-}
-
-/* Focus state (when clicking input) */
-.stTextInput > div > div > input:focus {
-    border: 1px solid #888 !important;
-    outline: none !important;
-    box-shadow: 0 0 0 1px #aaa !important;
-}
-
-/* Placeholder text */
-.stTextInput > div > div > input::placeholder {
-    color: #888 !important;
-}
-
-/* Smooth typing feel */
-input {
-    transition: all 0.2s ease-in-out;
-}
-
-</style>
-""", unsafe_allow_html=True)
-
-st.markdown("""
-<div style="
-    position: fixed;
-    top: 70px;   /* 🔥 move below Streamlit header */
-    right: 25px;
-    font-size: 14px;
-    font-weight: 600;
-    color: black;
-    z-index: 9999;
-">
-    Manoj | MIDAS IT
+<div style="position: fixed; top: 70px; right: 25px;
+font-size: 14px; font-weight: 600;">
+Manoj | MIDAS IT
 </div>
 """, unsafe_allow_html=True)
+
 # -------------------------------
 # INIT
 # -------------------------------
@@ -114,35 +80,27 @@ client = OpenAI(
 # -------------------------------
 def scrape_page(url):
     try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        res = requests.get(url, headers=headers, timeout=10)
-
+        res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
         if res.status_code != 200:
             return ""
 
         soup = BeautifulSoup(res.text, "html.parser")
-        text = soup.get_text(separator="\n")
-
-        return text[:6000]
+        return soup.get_text(separator="\n")[:6000]
     except:
         return ""
 
 # -------------------------------
-# LINK DISCOVERY
+# LINKS
 # -------------------------------
 def get_links(base_url):
     links = set()
-
     try:
         res = requests.get(base_url, headers={"User-Agent": "Mozilla/5.0"})
         soup = BeautifulSoup(res.text, "html.parser")
-
         domain = urlparse(base_url).netloc
 
         for a in soup.find_all("a", href=True):
-            href = a["href"]
-            full = urljoin(base_url, href)
-
+            full = urljoin(base_url, a["href"])
             if urlparse(full).netloc == domain:
                 links.add(full)
     except:
@@ -162,12 +120,7 @@ def crawl_site(base_url):
 
     links = get_links(base_url)
 
-    # 🔥 improved priority (important)
-    priority = [
-        "team", "people", "our-team",
-        "leadership", "directors",
-        "about", "staff"
-    ]
+    priority = ["team", "people", "about", "leadership"]
 
     sorted_links = sorted(
         links,
@@ -177,7 +130,6 @@ def crawl_site(base_url):
 
     for link in sorted_links[:10]:
         text = scrape_page(link)
-
         if text:
             pages.append({"url": link, "markdown": text})
 
@@ -191,63 +143,26 @@ def extract_company_name(pages, url):
         for line in page["markdown"].split("\n")[:10]:
             if 5 < len(line) < 80:
                 return line.strip()
-
     return urlparse(url).netloc
 
 # -------------------------------
-# NAME VALIDATION (IMPROVED)
+# NAME VALIDATION
 # -------------------------------
 def is_valid_name(text):
-    text = text.strip()
-
-    # Must be 2–3 words
-    if not re.match(r"^[A-Z][a-z]+(?:[-'][A-Z][a-z]+)?(?: [A-Z][a-z]+){1,2}$", text):
-        return False
-
-    words = text.split()
-
-    # ❌ Reject if any word is too "generic"
-    generic_words = [
-        "asset", "management", "project", "bridge",
-        "road", "rail", "design", "services",
-        "engineering", "solutions", "infrastructure",
-        "consulting", "group", "team", "business"
-    ]
-
-    for w in words:
-        if w.lower() in generic_words:
-            return False
-
-    # ❌ Reject if all words are common nouns (not names)
-    common_nouns = [
-        "management", "bridge", "engineering",
-        "project", "services", "design"
-    ]
-
-    if all(w.lower() in common_nouns for w in words):
-        return False
-
-    return True
-
+    return bool(re.match(r"^[A-Z][a-z]+(?: [A-Z][a-z]+){1,2}$", text))
 
 # -------------------------------
 # EXTRACT PEOPLE
 # -------------------------------
-
-
 def extract_people(pages):
     people = set()
 
     for page in pages:
-        lines = page["markdown"].split("\n")
+        for line in page["markdown"].split("\n"):
+            name = line.strip()
 
-        for line in lines:
-            text = line.strip()
-
-            if not is_valid_name(text):
-                continue
-
-            people.add(text)
+            if is_valid_name(name):
+                people.add(name)
 
     return list(people)[:20]
 
@@ -255,16 +170,11 @@ def extract_people(pages):
 # PROJECTS
 # -------------------------------
 def extract_projects(pages):
-    keywords = [
-        "bridge", "tunnel", "geotechnical",
-        "structural", "rail", "highway"
-    ]
-
+    keywords = ["bridge", "tunnel", "geotechnical", "rail", "highway"]
     found = set()
 
     for page in pages:
         text = page["markdown"].lower()
-
         for k in keywords:
             if k in text:
                 found.add(k)
@@ -275,98 +185,37 @@ def extract_projects(pages):
 # TEXT
 # -------------------------------
 def extract_company_text(pages):
-    combined = ""
-
-    for page in pages[:10]:
-        combined += page["markdown"][:4000]
-
-    return combined[:25000]
-
+    return "".join([p["markdown"][:4000] for p in pages])[:25000]
 
 # -------------------------------
-# LLM ANALYSIS (STRICT + RELIABLE)
+# LLM ANALYSIS
 # -------------------------------
 def analyze(company, text, people, projects):
-    if not people:
-        people = []
 
     prompt = f"""
 Company: {company}
 
-Website Data:
+Data:
 {text}
 
-Extracted Name Candidates:
+People:
 {people}
 
 Projects:
 {projects}
 
-----------------------------------------
-TASK
-----------------------------------------
+TASK:
+- Filter real people only
+- Categorise into roles
+- Do full company + sales analysis
 
-You must analyse the company and STRICTLY use the provided name candidates.
-
-STEP 1 — FILTER REAL PEOPLE
-From the "Extracted Name Candidates":
-- Keep ONLY real human names
-- REMOVE anything that is:
-  - company name
-  - project name
-  - department
-  - generic term (e.g. Asset Management, Infrastructure, etc.)
-
-STEP 2 — CLASSIFY PEOPLE
-Categorise ONLY valid individuals into:
-
-- Directors / Leadership
-- Senior / Principal Engineers
-- Engineers
-
-If no valid people exist, clearly say:
-"No individual names found on the website"
-
-STEP 3 — BUSINESS ANALYSIS
-Provide:
-
-1. What the company does
-2. Engineering capabilities (focus on structural / bridge / geotech relevance)
-3. Where FEM software can be applied
-4. Recommended sales approach (very practical, not generic)
-
-----------------------------------------
-RULES (VERY IMPORTANT)
-----------------------------------------
-
-- DO NOT invent names
-- DO NOT guess names
-- ONLY use names from the provided list
-- If list is wrong → return empty
-- Be concise but insightful
-- Focus on real engineering value
-
-----------------------------------------
-OUTPUT FORMAT
-----------------------------------------
-
-Use clear sections:
-
-1. What the Company Does  
-2. Engineering Capabilities  
-3. Key Personnel  
-4. FEM Opportunities  
-5. Sales Strategy  
-
+DO NOT invent names.
 """
 
     response = client.chat.completions.create(
         model="deepseek-chat",
         messages=[
-            {
-                "role": "system",
-                "content": "You are a strict data analyst for engineering sales. You only trust provided data and never hallucinate names."
-            },
+            {"role": "system", "content": "You are a strict engineering sales analyst."},
             {"role": "user", "content": prompt}
         ],
         temperature=0.1,
@@ -374,18 +223,28 @@ Use clear sections:
     )
 
     return response.choices[0].message.content
+
 # -------------------------------
-# Linkedin Search Link
-# -------------------------------   
+# CLEAN NAMES FROM LLM OUTPUT
+# -------------------------------
+def extract_clean_names_from_llm(text):
+    pattern = r"\b[A-Z][a-z]+(?: [A-Z][a-z]+){1,2}\b"
+    names = re.findall(pattern, text)
+
+    blacklist = ["Asset Management", "Quick Links", "Get In Touch"]
+
+    return list(set([n for n in names if n not in blacklist]))
+
+# -------------------------------
+# LINKEDIN
+# -------------------------------
 def generate_linkedin_search(name):
     query = urllib.parse.quote(name)
     return f"https://www.linkedin.com/search/results/people/?keywords={query}"
 
-
 # -------------------------------
 # UI
 # -------------------------------
-
 st.title("🚀 MIDAS Sales Intelligence Tool")
 
 website = st.text_input("Enter Company Website URL")
@@ -406,32 +265,21 @@ if st.button("Run Analysis"):
         st.error("Could not extract data")
         st.stop()
 
-    # -------------------------------
-    # PROCESS DATA
-    # -------------------------------
     company = extract_company_name(pages, website)
     people = extract_people(pages)
     projects = extract_projects(pages)
     text = extract_company_text(pages)
 
-    # -------------------------------
-    # ANALYSIS
-    # -------------------------------
     with st.spinner("🧠 Analyzing..."):
         result = analyze(company, text, people, projects)
 
-    # -------------------------------
-    # OUTPUT
-    # -------------------------------
     st.subheader("🏢 Company")
     st.write(company)
 
     st.subheader("📊 Insights")
     st.write(result)
 
-    # -------------------------------
-    # CLEAN PEOPLE FROM LLM OUTPUT
-    # -------------------------------
+    # 🔥 CLEAN PEOPLE
     clean_people = extract_clean_names_from_llm(result)
 
     st.subheader("👷 Key People")

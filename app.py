@@ -290,23 +290,84 @@ People Found:
 Projects:
 {projects}
 
-Provide FULL structured report:
+Provide a FULL structured report based ONLY on the provided website data.
 
-1. What the company does - summarise in brief bullet points and with one point mentioning all the office locations - only mention names of the city in the location
-2. Engineering capabilities - summarise in brief bullet points
-3. Key personnel (categorise into Directors, Senior/Principal Engineers, Engineers and make a table) - Reject that does not sound like a name
-4. Where FEM can be applied - summarise in brief bullet points
-5. Recommended sales approach as a professional sales consultant - summarise in brief bullet points - name the heading as Recommended Sales Approach
-6. Mention what are the open vacancies for bridge/structural/geotech - check if there is any mention for FEA software in requirement - name the heading as Open Vacancy
-7. Create "Clickable" LinkedIn Search URL for the key personnel names only with no mention of company or place in the search (seperately for each) - name the heading as LinkedIn Search
- 
+1. Company Overview
+Summarise what the company does in max 5 concise bullet points
+Include ALL office locations (city names only in one bullet point)
+Do NOT infer missing locations
+2. Engineering Capabilities
+Summarise in max 6 concise bullet points
+Focus on technical strengths, domains, and services
+3. Key Personnel
+Extract ONLY real human names (ignore generic titles or unclear entries)
+Categorise into:
+Directors
+Senior / Principal Engineers
+Engineers
+Present in a clean table format
 
-IMPORTANT:
-- Make sure to mention all office locations cities
-- Use ONLY provided names
-- Do NOT invent names 
-- Complete all sections fully with sticking to the data provided
-- Make sure LinkedIn search links are clickable
+Rules:
+
+Do NOT invent names
+Exclude anything that does not clearly look like a person’s name
+4. FEM Application Opportunities
+Identify specific and contextual use cases where FEM can be applied based on company activities
+Provide max 5 bullet points
+Avoid generic statements
+5. Recommended Sales Approach
+
+(Heading must be exactly: Recommended Sales Approach)
+
+Provide:
+
+Ideal entry point (who to approach first)
+Key pain points inferred from services/projects
+Value positioning strategy
+Likely objections
+Suggested first conversation angle
+6. Open Vacancy Insights
+
+(Heading must be exactly: Open Vacancy)
+
+List relevant openings in:
+Structural / Bridge / Geotechnical
+Mention:
+Role titles
+Any mention of FEM / FEA software
+If none found → clearly state: “No relevant vacancies found”
+7. LinkedIn Search Links
+
+(Heading must be exactly: LinkedIn Search)
+
+Create clickable LinkedIn search URLs for each extracted person
+Use ONLY the name (no company or location)
+One seperate link per person
+8. Key Sales Signals 
+Identify:
+Hiring trends
+Expansion indicators
+Technical maturity
+Project types
+Max 5 bullet points
+9. Pre-Meeting Cheat Sheet 
+
+Provide:
+
+3 things to mention
+3 smart questions to ask
+1 strong opening line
+10. Confidence & Data Gaps 
+For each section, assign:
+High / Medium / Low confidence
+Clearly mention missing or weak data areas
+IMPORTANT RULES:
+Use ONLY provided data
+Do NOT hallucinate or infer beyond evidence
+If information is missing → explicitly state “Not found”
+Keep output concise, structured, and professional
+Do NOT repeat information across sections
+Make sure LinkedIn links are clickable
 """
 
     response = client.chat.completions.create(

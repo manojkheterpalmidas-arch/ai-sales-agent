@@ -229,30 +229,27 @@ def is_valid_name(text):
 
     return True
 
+
+# -------------------------------
+# EXTRACT PEOPLE
+# -------------------------------
+
+
 def extract_people(pages):
     people = set()
 
     for page in pages:
         lines = page["markdown"].split("\n")
 
-        for i, line in enumerate(lines):
+        for line in lines:
             text = line.strip()
 
             if not is_valid_name(text):
                 continue
 
-            context = " ".join(lines[max(0, i-3): i+3]).lower()
-
-            # 🔥 STRICT HUMAN CONTEXT
-            if not any(k in context for k in [
-                "engineer", "director", "associate",
-                "principal", "senior", "mr", "ms", "dr"
-            ]):
-                continue
-
             people.add(text)
 
-    return list(people)[:15]
+    return list(people)[:20]
 
 # -------------------------------
 # PROJECTS

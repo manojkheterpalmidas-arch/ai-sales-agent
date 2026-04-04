@@ -429,15 +429,19 @@ if st.button("Run Analysis"):
 
     st.subheader("📊 Insights")
     st.write(result)
+    def extract_clean_names_from_llm(text):
+    pattern = r"\b[A-Z][a-z]+ [A-Z][a-z]+\b"
+    names = re.findall(pattern, text)
+
+    # remove duplicates
+    return list(set(names))
 
     # -------------------------------
     # LINKEDIN SEARCH LINKS
     # -------------------------------
-    st.subheader("👷 Key People")
+def extract_clean_names_from_llm(text):
+    pattern = r"\b[A-Z][a-z]+ [A-Z][a-z]+\b"
+    names = re.findall(pattern, text)
 
-    if people:
-        for person in people:
-            link = generate_linkedin_search(person)
-            st.markdown(f"**{person}**  \n[🔗 Search on LinkedIn]({link})")
-    else:
-        st.write("No people found")
+    # remove duplicates
+    return list(set(names))

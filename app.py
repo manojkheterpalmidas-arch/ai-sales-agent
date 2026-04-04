@@ -353,6 +353,17 @@ if st.button("Run Analysis"):
 
     st.subheader("🏢 Company")
     st.write(company)
+people = extract_people(pages)
+projects = extract_projects(pages)
+text = extract_company_text(pages)
+
+with st.spinner("🧠 Analyzing..."):
+    result = analyze(company, text, people, projects)
+
+st.subheader("📊 Insights")
+st.write(result)
+
+# ✅ ADD HERE (correct place)
 st.subheader("👷 Key People")
 
 if people:
@@ -361,9 +372,8 @@ if people:
         st.markdown(f"**{person}**  \n[🔗 Search on LinkedIn]({link})")
 else:
     st.write("No people found")
-    people = extract_people(pages)
-    projects = extract_projects(pages)
-    text = extract_company_text(pages)
+
+
 
 
 

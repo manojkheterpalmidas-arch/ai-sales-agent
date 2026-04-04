@@ -302,6 +302,7 @@ Provide FULL structured report:
  
 
 IMPORTANT:
+- Make sure to mention all office locations cities
 - Use ONLY provided names
 - Do NOT invent names 
 - Complete all sections fully with sticking to the data provided

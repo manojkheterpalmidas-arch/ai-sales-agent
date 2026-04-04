@@ -321,8 +321,8 @@ IMPORTANT:
 # Linkedin Search Link
 # -------------------------------   
 def generate_linkedin_search(name):
-query = urllib.parse.quote(name)
-return f"https://www.linkedin.com/search/results/people/?keywords={query}"
+    query = urllib.parse.quote(name)
+    return f"https://www.linkedin.com/search/results/people/?keywords={query}"
 
 
 # -------------------------------

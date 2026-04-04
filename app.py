@@ -229,11 +229,49 @@ DO NOT invent names.
 # -------------------------------
 def extract_clean_names_from_llm(text):
     pattern = r"\b[A-Z][a-z]+(?: [A-Z][a-z]+){1,2}\b"
-    names = re.findall(pattern, text)
+    candidates = re.findall(pattern, text)
 
-    blacklist = ["Asset Management", "Quick Links", "Get In Touch"]
+    blacklist = [
+        # generic UI / headings
+        "Core Value Proposition", "Targeted Content", "Market Analysis",
+        "Primary Sectors", "Expand Testimonials", "Quick Links",
+        "Get In Touch", "Our Projects", "View Projects",
 
-    return list(set([n for n in names if n not in blacklist]))
+        # orgs / non-people
+        "Manchester City Council", "Network Rail",
+
+        # generic words
+        "Asset Management", "Business Support", "Engineering Services"
+    ]
+
+    clean = []
+
+    for name in candidates:
+        # ❌ remove blacklist
+        if name in blacklist:
+            continue
+
+        # ❌ reject if contains non-human words
+        if any(word.lower() in name.lower() for word in [
+            "value", "analysis", "sector", "content",
+            "project", "bridge", "management",
+            "services", "engineering", "council"
+        ]):
+            continue
+
+        # ✅ must look like human name (extra safety)
+        words = name.split()
+
+        if len(words) < 2:
+            continue
+
+        # first + last name must be proper case
+        if not all(w[0].isupper() for w in words):
+            continue
+
+        clean.append(name)
+
+    return list(set(clean))
 
 # -------------------------------
 # LINKEDIN

@@ -200,24 +200,35 @@ def extract_company_name(pages, url):
 def is_valid_name(text):
     text = text.strip()
 
-    # Must be 2–3 words only
+    # Must be 2–3 words
     if not re.match(r"^[A-Z][a-z]+(?:[-'][A-Z][a-z]+)?(?: [A-Z][a-z]+){1,2}$", text):
         return False
 
-    # ❌ Block common non-person words
-    blacklist = [
-        "ltd", "limited", "group", "company",
-        "bridge", "road", "canal", "reservoir",
-        "project", "services", "engineering",
-        "infrastructure", "design", "solutions",
-        "rail", "transport"
+    words = text.split()
+
+    # ❌ Reject if any word is too "generic"
+    generic_words = [
+        "asset", "management", "project", "bridge",
+        "road", "rail", "design", "services",
+        "engineering", "solutions", "infrastructure",
+        "consulting", "group", "team", "business"
     ]
 
-    return not any(b in text.lower() for b in blacklist)
+    for w in words:
+        if w.lower() in generic_words:
+            return False
 
-# -------------------------------
-# PEOPLE EXTRACTION (FIXED)
-# -------------------------------
+    # ❌ Reject if all words are common nouns (not names)
+    common_nouns = [
+        "management", "bridge", "engineering",
+        "project", "services", "design"
+    ]
+
+    if all(w.lower() in common_nouns for w in words):
+        return False
+
+    return True
+
 def extract_people(pages):
     people = set()
 
@@ -230,16 +241,16 @@ def extract_people(pages):
             if not is_valid_name(text):
                 continue
 
-            # 🔥 local context (key fix)
             context = " ".join(lines[max(0, i-3): i+3]).lower()
 
-            if any(k in context for k in [
-                "engineer", "structural", "bridge",
-                "geotechnical", "civil",
-                "principal", "senior", "director",
-                "associate", "lead", "manager"
+            # 🔥 STRICT HUMAN CONTEXT
+            if not any(k in context for k in [
+                "engineer", "director", "associate",
+                "principal", "senior", "mr", "ms", "dr"
             ]):
-                people.add(text)
+                continue
+
+            people.add(text)
 
     return list(people)[:15]
 

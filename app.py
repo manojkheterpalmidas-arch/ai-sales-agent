@@ -407,10 +407,9 @@ if st.button("Run Analysis"):
         st.stop()
 
     # -------------------------------
-    # PROCESS DATA (INSIDE BUTTON!)
+    # PROCESS DATA
     # -------------------------------
     company = extract_company_name(pages, website)
-
     people = extract_people(pages)
     projects = extract_projects(pages)
     text = extract_company_text(pages)
@@ -429,19 +428,17 @@ if st.button("Run Analysis"):
 
     st.subheader("📊 Insights")
     st.write(result)
-    def extract_clean_names_from_llm(text):
-    pattern = r"\b[A-Z][a-z]+ [A-Z][a-z]+\b"
-    names = re.findall(pattern, text)
-
-    # remove duplicates
-    return list(set(names))
 
     # -------------------------------
-    # LINKEDIN SEARCH LINKS
+    # CLEAN PEOPLE FROM LLM OUTPUT
     # -------------------------------
-def extract_clean_names_from_llm(text):
-    pattern = r"\b[A-Z][a-z]+ [A-Z][a-z]+\b"
-    names = re.findall(pattern, text)
+    clean_people = extract_clean_names_from_llm(result)
 
-    # remove duplicates
-    return list(set(names))
+    st.subheader("👷 Key People")
+
+    if clean_people:
+        for person in clean_people:
+            link = generate_linkedin_search(person)
+            st.markdown(f"**{person}**  \n[🔗 Search on LinkedIn]({link})")
+    else:
+        st.write("No valid people identified")

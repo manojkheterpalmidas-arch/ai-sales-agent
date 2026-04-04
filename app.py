@@ -292,10 +292,10 @@ Projects:
 
 Provide FULL structured report:
 
-1. What the company does
+1. What the company does - summarise in 2-3 lines
 2. Engineering capabilities
-3. Key personnel (categorise into Directors, Senior/Principal Engineers, Engineers)
-4. Where FEM can be applied from MIDAS IT products
+3. Key personnel (categorise into Directors, Senior/Principal Engineers, Engineers and make a table)
+4. Where FEM can be applied 
 5. Recommended sales approach as a professional sales consultant
 6. Create Clickable LinkedIn search URL for the key personnel names only with no mention of company or place in the search (seperately for each) - name the heading as LinkedIn Search
  

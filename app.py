@@ -326,7 +326,8 @@ Key pain points inferred from services/projects
 Value positioning strategy
 Likely objections
 Suggested first conversation angle
-All should be in seperate bullet points
+All must be in seperate bullet points
+
 6. Open Vacancy Insights
 
 (Heading must be exactly: Open Vacancy)

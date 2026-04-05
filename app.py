@@ -483,7 +483,7 @@ def analyze_company(corpus):
 {{
   "company_name": "string",
   "tagline": "string or null",
-   "locations": ["city1", "city2", "city3"],
+  "locations": ["ONLY cities explicitly stated as offices on the website — empty array if none found"],
   "founded": "year or null",
   "employee_count": "string or null",
   "overview": ["bullet 1", "bullet 2", "bullet 3"],
@@ -499,9 +499,16 @@ contact pages. Include owners, founders, directors, engineers at all levels, tec
 graduate engineers. Do NOT limit to senior staff only. If a name appears with any role or title, 
 include them.
 
-For locations: extract EVERY office location mentioned anywhere on the site — contact pages, 
-footer, about pages, office listings. Return ONLY city names (e.g. "Manchester" not 
-"123 High Street, Manchester M1 1AA"). Include ALL cities, do not stop at one.
+For locations: extract ONLY cities that are EXPLICITLY and LITERALLY mentioned on the website 
+as office locations. 
+STRICT RULES:
+- Only include a city if the website text directly states it as an office, branch, or location
+- Do NOT infer, guess, or assume locations from project names, client names, or case studies
+- Do NOT include cities just because a project was done there
+- Do NOT include headquarters of clients or partners
+- If no office locations are explicitly stated, return an empty array []
+- A city mentioned in a project (e.g. "Thames Tideway in London") does NOT mean they have an office in London
+- Only count explicit statements like "Our offices in Manchester", "Birmingham office", "Based in Leeds"
 
 Website content:
 {corpus}"""

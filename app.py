@@ -554,15 +554,189 @@ def li_url(name):
 def score_cls(s):
     return {"Hot": "score-hot", "Warm": "score-warm", "Cold": "score-cold"}.get(s, "score-cold")
 
-def export_md(company, cd, sd):
-    lines = [f"# MIDAS Sales Intel: {company}", f"*{datetime.now().strftime('%d %b %Y %H:%M')}*\n"]
-    lines += ["## Overview"] + [f"- {b}" for b in cd.get("overview", [])]
-    lines += ["\n## Capabilities"] + [f"- {b}" for b in cd.get("engineering_capabilities", [])]
-    lines += ["\n## People"] + [f"- **{p['name']}** — {p.get('role','')}" for p in cd.get("people", [])]
-    lines += ["\n## FEM Opportunities"] + [f"- {o}" for o in sd.get("fem_opportunities", [])]
-    lines += [f"\n## Strategy\n**Entry:** {sd.get('entry_point','')}\n**Value:** {sd.get('value_positioning','')}\n**Opening:** {sd.get('opening_line','')}"]
-    lines += ["\n## Questions"] + [f"- {q}" for q in sd.get("smart_questions", [])]
-    return "\n".join(lines)
+def export_pdf(company, cd, sd):
+    import io
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable, Table, TableStyle
+    from reportlab.lib.enums import TA_LEFT, TA_CENTER
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=A4,
+        leftMargin=20*mm, rightMargin=20*mm,
+        topMargin=20*mm, bottomMargin=20*mm
+    )
+
+    # ── COLOURS ──
+    INK       = colors.HexColor("#111111")
+    ACCENT    = colors.HexColor("#c8471e")
+    MUTED     = colors.HexColor("#888888")
+    LIGHT_BG  = colors.HexColor("#faf9f6")
+    BORDER    = colors.HexColor("#e8e4dc")
+    WHITE     = colors.white
+
+    # ── STYLES ──
+    def style(name, **kw):
+        base = dict(fontName="Helvetica", fontSize=10, textColor=INK,
+                    leading=16, spaceAfter=2)
+        base.update(kw)
+        return ParagraphStyle(name, **base)
+
+    S_TITLE     = style("title",   fontName="Helvetica-Bold", fontSize=22, textColor=INK, spaceAfter=4)
+    S_SCORE     = style("score",   fontName="Helvetica-Bold", fontSize=11, textColor=ACCENT)
+    S_META      = style("meta",    fontSize=9,  textColor=MUTED, spaceAfter=8)
+    S_SECTION   = style("section", fontName="Helvetica-Bold", fontSize=9,
+                        textColor=ACCENT, spaceBefore=14, spaceAfter=6,
+                        letterSpacing=1.5)
+    S_BODY      = style("body",    fontSize=10, textColor=INK, leading=15, spaceAfter=4)
+    S_BULLET    = style("bullet",  fontSize=10, textColor=INK, leading=15,
+                        leftIndent=12, spaceAfter=3)
+    S_LABEL     = style("label",   fontName="Helvetica-Bold", fontSize=9,
+                        textColor=MUTED, spaceAfter=2)
+    S_ITALIC    = style("italic",  fontSize=10, textColor=INK, leading=15,
+                        italics=True, leftIndent=12)
+
+    story = []
+
+    def section(title):
+        story.append(Spacer(1, 4*mm))
+        story.append(Paragraph(title.upper(), S_SECTION))
+        story.append(HRFlowable(width="100%", thickness=0.5,
+                                color=BORDER, spaceAfter=4))
+
+    def bullets(items):
+        for item in items:
+            story.append(Paragraph(f"→  {item}", S_BULLET))
+
+    def label_value(label, value):
+        story.append(Paragraph(label.upper(), S_LABEL))
+        story.append(Paragraph(value, S_BODY))
+        story.append(Spacer(1, 2*mm))
+
+    # ── HEADER ──
+    score     = sd.get("overall_score", "Warm")
+    locs      = ", ".join(cd.get("locations", [])) or "—"
+    emp       = cd.get("employee_count") or "—"
+    conf      = cd.get("confidence", "—")
+    generated = datetime.now().strftime("%d %b %Y %H:%M")
+
+    story.append(Paragraph(company, S_TITLE))
+    story.append(Paragraph(f"{score.upper()} LEAD", S_SCORE))
+    story.append(Paragraph(
+        f"Offices: {locs}  |  Employees: {emp}  |  Confidence: {conf}  |  Generated: {generated}",
+        S_META
+    ))
+    story.append(Paragraph(sd.get("score_reason", ""), S_BODY))
+    story.append(HRFlowable(width="100%", thickness=1, color=ACCENT, spaceAfter=6))
+
+    # ── COMPANY OVERVIEW ──
+    section("Company Overview")
+    bullets(cd.get("overview", []))
+
+    section("Engineering Capabilities")
+    bullets(cd.get("engineering_capabilities", []))
+
+    pts = cd.get("project_types", [])
+    if pts:
+        section("Project Types")
+        story.append(Paragraph("  ·  ".join(pts), S_BODY))
+
+    sw = cd.get("software_mentioned", [])
+    if sw:
+        section("Software & Tools Detected")
+        story.append(Paragraph("  ·  ".join(sw), S_BODY))
+    else:
+        section("Software & Tools")
+        story.append(Paragraph("No competing software detected — clean FEA opportunity.", S_BODY))
+
+    # ── PEOPLE ──
+    people = cd.get("people", [])
+    if people:
+        section("Key People")
+        table_data = [["Name", "Role", "Tier"]]
+        for p in people:
+            table_data.append([
+                p.get("name", ""),
+                p.get("role", ""),
+                p.get("tier", "")
+            ])
+        t = Table(table_data, colWidths=[55*mm, 80*mm, 30*mm])
+        t.setStyle(TableStyle([
+            ("BACKGROUND",   (0, 0), (-1, 0),  colors.HexColor("#f0ede6")),
+            ("TEXTCOLOR",    (0, 0), (-1, 0),  INK),
+            ("FONTNAME",     (0, 0), (-1, 0),  "Helvetica-Bold"),
+            ("FONTSIZE",     (0, 0), (-1, 0),  8),
+            ("FONTSIZE",     (0, 1), (-1, -1), 9),
+            ("ROWBACKGROUNDS",(0,1), (-1,-1),  [WHITE, LIGHT_BG]),
+            ("GRID",         (0, 0), (-1, -1), 0.3, BORDER),
+            ("TOPPADDING",   (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING",(0, 0), (-1, -1), 5),
+            ("LEFTPADDING",  (0, 0), (-1, -1), 6),
+            ("VALIGN",       (0, 0), (-1, -1), "MIDDLE"),
+        ]))
+        story.append(t)
+
+    # ── FEM OPPORTUNITIES ──
+    section("FEM / FEA Opportunities")
+    bullets(sd.get("fem_opportunities", []))
+
+    section("Key Sales Signals")
+    for sig in sd.get("hiring_signals", []) + sd.get("expansion_signals", []):
+        story.append(Paragraph(f"▲  {sig}", S_BULLET))
+
+    # ── SALES STRATEGY ──
+    section("Sales Strategy")
+    label_value("Entry Point", sd.get("entry_point", "—"))
+    label_value("Value Positioning", sd.get("value_positioning", "—"))
+
+    objs = sd.get("likely_objections", [])
+    if objs:
+        story.append(Paragraph("LIKELY OBJECTIONS", S_LABEL))
+        bullets(objs)
+        story.append(Spacer(1, 2*mm))
+
+    # ── PRE-MEETING CHEAT SHEET ──
+    section("Pre-Meeting Cheat Sheet")
+
+    story.append(Paragraph("3 THINGS TO MENTION", S_LABEL))
+    for m in sd.get("pre_meeting_mention", []):
+        story.append(Paragraph(f"✓  {m}", S_BULLET))
+
+    story.append(Spacer(1, 3*mm))
+    story.append(Paragraph("3 SMART QUESTIONS TO ASK", S_LABEL))
+    for q in sd.get("smart_questions", []):
+        story.append(Paragraph(f"?  {q}", S_BULLET))
+
+    story.append(Spacer(1, 3*mm))
+    story.append(Paragraph("OPENING LINE", S_LABEL))
+    story.append(Paragraph(sd.get("opening_line", "—"), S_ITALIC))
+
+    # ── VACANCIES ──
+    roles = cd.get("open_roles", [])
+    if roles:
+        section("Open Vacancies")
+        for role in roles:
+            title  = role.get("title", "Unknown")
+            skills = ", ".join(role.get("skills", [])) or "—"
+            fem    = " · FEM MENTIONED" if role.get("fem_mentioned") else ""
+            story.append(Paragraph(f"<b>{title}</b>{fem}", S_BODY))
+            story.append(Paragraph(f"Skills: {skills}", S_META))
+            story.append(Spacer(1, 1*mm))
+
+    # ── FOOTER ──
+    story.append(Spacer(1, 8*mm))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=BORDER))
+    story.append(Paragraph(
+        f"Generated by MIDAS Sales Intelligence  |  {generated}  |  Confidential",
+        style("footer", fontSize=8, textColor=MUTED, alignment=TA_CENTER)
+    ))
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.read()
 
 
 # ── TOP BAR ───────────────────────────────────────────────────────────────────
@@ -884,12 +1058,31 @@ if run:
         else:
             st.info("No relevant vacancies found on this website.")
             
-    # TAB 6 ── EXPORT ──────────────────────────────────────────────────────
+  # TAB 6 ── EXPORT ──────────────────────────────────────────────────────
     with t6:
         st.markdown('<div class="sec-label">Export Dossier</div>', unsafe_allow_html=True)
-        md_out = export_md(company_name, company_data, sales_data)
-        fname  = f"MIDAS_Intel_{company_name.replace(' ','_')}_{datetime.now().strftime('%Y%m%d')}.md"
-        st.download_button("📥 Download as Markdown", data=md_out, file_name=fname, mime="text/markdown")
+
+        st.markdown("""
+        <div style="background:white;border:1px solid #e8e4dc;border-radius:8px;
+             padding:20px 24px;margin-bottom:16px;">
+            <div style="font-weight:600;font-size:15px;color:#111;margin-bottom:6px;">
+                PDF Sales Dossier
+            </div>
+            <div style="font-size:13px;color:#888;margin-bottom:16px;">
+                Formatted report with all sections — ready to print or share before a meeting.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        pdf_bytes = export_pdf(company_name, company_data, sales_data)
+        fname = f"MIDAS_Intel_{company_name.replace(' ','_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
+        st.download_button(
+            "📥  Download PDF",
+            data=pdf_bytes,
+            file_name=fname,
+            mime="application/pdf"
+        )
+
         st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
         st.markdown('<div class="sec-label">Raw JSON</div>', unsafe_allow_html=True)
         with st.expander("Company data"):

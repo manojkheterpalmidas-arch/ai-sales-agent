@@ -39,10 +39,18 @@ if not st.session_state.authenticated:
     text-transform: uppercase !important;
     padding: 11px 28px !important;
 }
-.stButton > button p,
-.stButton > button span,
-.stButton > button div {
+.stButton > button:hover {
+    background: #c8471e !important;
     color: white !important;
+}
+/* Target the inner p tag Streamlit injects */
+div[data-testid="stButton"] > button > div > p,
+div[data-testid="stButton"] button p,
+div[data-testid="stButton"] button span,
+div[data-testid="stButton"] button * {
+    color: white !important;
+    font-family: 'Syne', sans-serif !important;
+    font-weight: 700 !important;
 }
 .stButton > button:hover { background: #c8471e !important; }
 .stButton > button:hover p,
@@ -90,6 +98,13 @@ html, body, [class*="css"] {
 /* Force text colour in all Streamlit containers */
 .stApp, .stApp * {
     color: #111 !important;
+}
+/* Exempt buttons from global dark text override */
+.stApp .stButton button,
+.stApp .stButton button *,
+.stApp div[data-testid="stButton"] button,
+.stApp div[data-testid="stButton"] button * {
+    color: white !important;
 }
 .stMarkdown, .stMarkdown * { color: #111 !important; }
 .stText { color: #111 !important; }

@@ -483,7 +483,7 @@ def analyze_company(corpus):
 {{
   "company_name": "string",
   "tagline": "string or null",
-  "locations": ["city1"],
+   "locations": ["city1", "city2", "city3"],
   "founded": "year or null",
   "employee_count": "string or null",
   "overview": ["bullet 1", "bullet 2", "bullet 3"],
@@ -498,6 +498,10 @@ Extract ALL people mentioned anywhere on the site — team pages, about pages, p
 contact pages. Include owners, founders, directors, engineers at all levels, technicians, and 
 graduate engineers. Do NOT limit to senior staff only. If a name appears with any role or title, 
 include them.
+
+For locations: extract EVERY office location mentioned anywhere on the site — contact pages, 
+footer, about pages, office listings. Return ONLY city names (e.g. "Manchester" not 
+"123 High Street, Manchester M1 1AA"). Include ALL cities, do not stop at one.
 
 Website content:
 {corpus}"""
@@ -622,7 +626,8 @@ if run:
     company_name = company_data.get("company_name", website)
     score        = sales_data.get("overall_score", "Warm")
     score_reason = sales_data.get("score_reason", "")
-    locs         = " · ".join(company_data.get("locations", [])) or "—"
+    locs_list = company_data.get("locations", [])
+    locs = " · ".join(locs_list) if locs_list else "—"
     emp          = company_data.get("employee_count") or "—"
     conf         = company_data.get("confidence", "Medium")
 
@@ -635,7 +640,10 @@ if run:
             <span class='score-badge {score_cls(score)}'>{score} Lead</span>
         </div>
         <div style='font-family:"JetBrains Mono",monospace;font-size:11px;color:#888;margin-bottom:6px;'>
-            📍 {locs} &nbsp;·&nbsp; 👥 {emp} &nbsp;·&nbsp; Confidence: <b style='color:#c8471e;'>{conf}</b>
+            📍 {locs}
+        </div>
+        <div style='font-family:"JetBrains Mono",monospace;font-size:11px;color:#888;margin-bottom:6px;'>
+            👥 {emp} &nbsp;·&nbsp; Confidence: <b style='color:#c8471e;'>{conf}</b>
         </div>
         <div style='font-size:14px;color:#555;'>{score_reason}</div>
         """, unsafe_allow_html=True)

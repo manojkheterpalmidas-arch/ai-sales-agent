@@ -294,62 +294,22 @@ deepseek = OpenAI(api_key=st.secrets["DEEPSEEK_API_KEY"], base_url="https://api.
 FIRECRAWL_KEY = st.secrets["FIRECRAWL_API_KEY"]
 
 # ── FIRECRAWL ─────────────────────────────────────────────────────────────────
-# FIND and REPLACE the entire firecrawl_crawl function:
 
-def firecrawl_crawl(url, max_pages=15):
-    """Try async crawl first, fall back to scraping key pages individually."""
+def firecrawl_scrape_single(url):
     try:
         resp = requests.post(
-            "https://api.firecrawl.dev/v1/crawl",
+            "https://api.firecrawl.dev/v1/scrape",
             headers={"Authorization": f"Bearer {FIRECRAWL_KEY}", "Content-Type": "application/json"},
-            json={
-                "url": url,
-                "limit": max_pages,
-                "scrapeOptions": {"formats": ["markdown"]},
-            },
-            timeout=30
+            json={"url": url, "formats": ["markdown"]},
+            timeout=20
         )
-        job_id = resp.json().get("id")
-        if not job_id:
-            return firecrawl_multi_scrape(url)
-
-        import time
-        for attempt in range(25):  # up to ~100 seconds
-            time.sleep(4)
-            poll = requests.get(
-                f"https://api.firecrawl.dev/v1/crawl/{job_id}",
-                headers={"Authorization": f"Bearer {FIRECRAWL_KEY}"},
-                timeout=15
-            ).json()
-
-            status = poll.get("status")
-            pages  = poll.get("data", [])
-
-            # Return early if we have enough pages even if still crawling
-            if status == "completed" or (status == "scraping" and len(pages) >= 5):
-                results = [
-                    {"url": p.get("metadata", {}).get("sourceURL", url),
-                     "markdown": p.get("markdown", "")}
-                    for p in pages if p.get("markdown","").strip()
-                ]
-                if results:
-                    return results
-
-            if status == "failed":
-                break
-
-        # Crawl failed or timed out — fall back to scraping key pages
-        return firecrawl_multi_scrape(url)
-
-    except Exception as e:
-        return firecrawl_multi_scrape(url)
+        md = resp.json().get("data", {}).get("markdown", "")
+        return [{"url": url, "markdown": md}] if md else []
+    except:
+        return []
 
 
 def firecrawl_multi_scrape(base_url):
-    """
-    Scrape homepage + discover and scrape high-value subpages individually.
-    This is the reliable fallback when async crawl fails or returns 1 page.
-    """
     from urllib.parse import urljoin, urlparse
     from bs4 import BeautifulSoup
 
@@ -375,19 +335,16 @@ def firecrawl_multi_scrape(base_url):
             pass
         return None
 
-    # Step 1: scrape homepage
     home = scrape_one(base_url)
     if not home:
         return []
     results.append(home)
 
-    # Step 2: find internal links from homepage HTML
     try:
         html_resp = requests.get(base_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
         soup = BeautifulSoup(html_resp.text, "html.parser")
         domain = urlparse(base_url).netloc
 
-        # Priority keywords — pages most likely to have people, projects, jobs
         priority_keywords = [
             "team", "people", "our-team", "about", "staff",
             "leadership", "directors", "who-we-are",
@@ -395,13 +352,11 @@ def firecrawl_multi_scrape(base_url):
             "projects", "services", "what-we-do", "contact"
         ]
 
-        # Collect all internal links
         all_links = []
         for a in soup.find_all("a", href=True):
             href = a["href"].strip()
             full = urljoin(base_url, href)
             parsed = urlparse(full)
-            # Internal links only, no anchors, no files
             if (parsed.netloc == domain and
                 not any(full.endswith(ext) for ext in [".pdf",".jpg",".png",".zip"]) and
                 "#" not in full and
@@ -409,7 +364,6 @@ def firecrawl_multi_scrape(base_url):
                 full not in visited):
                 all_links.append(full)
 
-        # Sort: priority pages first
         def priority_score(link):
             lower = link.lower()
             for i, kw in enumerate(priority_keywords):
@@ -422,7 +376,6 @@ def firecrawl_multi_scrape(base_url):
     except:
         sorted_links = []
 
-    # Step 3: scrape up to 14 more pages (15 total)
     for link in sorted_links[:14]:
         page = scrape_one(link)
         if page:
@@ -430,6 +383,57 @@ def firecrawl_multi_scrape(base_url):
 
     return results
 
+
+def firecrawl_crawl(url, max_pages=15):
+    try:
+        resp = requests.post(
+            "https://api.firecrawl.dev/v1/crawl",
+            headers={"Authorization": f"Bearer {FIRECRAWL_KEY}", "Content-Type": "application/json"},
+            json={"url": url, "limit": max_pages, "scrapeOptions": {"formats": ["markdown"]}},
+            timeout=30
+        )
+        job_id = resp.json().get("id")
+        if not job_id:
+            return firecrawl_multi_scrape(url)
+
+        import time
+        for _ in range(25):
+            time.sleep(4)
+            poll = requests.get(
+                f"https://api.firecrawl.dev/v1/crawl/{job_id}",
+                headers={"Authorization": f"Bearer {FIRECRAWL_KEY}"},
+                timeout=15
+            ).json()
+
+            status = poll.get("status")
+            pages  = poll.get("data", [])
+
+            if status == "completed" or (status == "scraping" and len(pages) >= 5):
+                results = [
+                    {"url": p.get("metadata", {}).get("sourceURL", url),
+                     "markdown": p.get("markdown", "")}
+                    for p in pages if p.get("markdown", "").strip()
+                ]
+                if results:
+                    return results
+
+            if status == "failed":
+                break
+
+        return firecrawl_multi_scrape(url)
+
+    except:
+        return firecrawl_multi_scrape(url)
+
+
+# ── TEXT PREP ─────────────────────────────────────────────────────────────────
+
+def build_corpus(pages):
+    chunks = [
+        f"[PAGE: {p.get('url','')}]\n{p.get('markdown','').strip()[:5000]}"
+        for p in pages if p.get("markdown", "").strip()
+    ]
+    return "\n\n---\n\n".join(chunks)[:40000]
 
 # ── AI ────────────────────────────────────────────────────────────────────────
 def ask_deepseek(system, user, max_tokens=2000):

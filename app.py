@@ -27,14 +27,29 @@ if not st.session_state.authenticated:
         caret-color: #c8471e !important;
     }
     .stTextInput > div > div > input:focus { border-color: #c8471e !important; box-shadow: 0 0 0 3px rgba(200,71,30,0.1) !important; }
-    .stButton > button {
-        background: #111 !important; color: white !important;
-        border: none !important; border-radius: 6px !important;
-        font-family: 'Syne', sans-serif !important; font-weight: 700 !important;
-        font-size: 13px !important; letter-spacing: 0.12em !important;
-        text-transform: uppercase !important; padding: 12px 32px !important; width: 100% !important;
-    }
-    .stButton > button:hover { background: #c8471e !important; }
+.stButton > button {
+    background: #111 !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 6px !important;
+    font-family: 'Syne', sans-serif !important;
+    font-weight: 700 !important;
+    font-size: 13px !important;
+    letter-spacing: 0.1em !important;
+    text-transform: uppercase !important;
+    padding: 11px 28px !important;
+}
+.stButton > button p,
+.stButton > button span,
+.stButton > button div {
+    color: white !important;
+}
+.stButton > button:hover { background: #c8471e !important; }
+.stButton > button:hover p,
+.stButton > button:hover span,
+.stButton > button:hover div {
+    color: white !important;
+}
     </style>
     """, unsafe_allow_html=True)
 

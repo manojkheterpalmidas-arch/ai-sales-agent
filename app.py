@@ -469,6 +469,7 @@ if st.button("Run Analysis"):
     people = extract_people(pages)
     projects = extract_projects(pages)
     text = extract_company_text(pages)
+    jobs = extract_jobs(pages)
 
     with st.spinner("🧠 Analyzing..."):
         result = analyze(company, text, people, projects,jobs)

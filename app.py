@@ -801,17 +801,17 @@ if run:
             opening = sales_data.get("opening_line", "")
             if opening:
                 st.markdown(f'''
-                <div style="background:#111;border-radius:8px;padding:24px 28px;
+                <div style="background:white;border:1px solid #e8e4dc;border-left:3px solid #c8471e;
+                     border-radius:8px;padding:24px 28px;
                      font-size:15px;line-height:1.8;font-style:italic;position:relative;">
-                    <span style="font-family:Syne,sans-serif;font-size:72px;font-weight:700;
-                         color:rgba(200,71,30,0.4);position:absolute;top:-10px;left:16px;
+                    <span style="font-family:Syne,sans-serif;font-size:64px;font-weight:700;
+                         color:rgba(200,71,30,0.25);position:absolute;top:-8px;left:14px;
                          line-height:1;">"</span>
-                    <span style="color:#f0ede6 !important;display:block;padding-left:20px;">
+                    <span style="color:#333;display:block;padding-left:20px;">
                         {opening}
                     </span>
                 </div>''', unsafe_allow_html=True)
-
-    # TAB 5 ── VACANCIES ───────────────────────────────────────────────────
+# TAB 5 ── VACANCIES ───────────────────────────────────────────────────
     with t5:
         roles = company_data.get("open_roles", [])
         if roles:
@@ -820,19 +820,25 @@ if run:
                 st.success(f"🎯 {fem_n} role(s) explicitly mention FEM/FEA — strong buying signal")
             st.markdown('<div class="sec-label">Open Roles</div>', unsafe_allow_html=True)
             for role in roles:
-                fem_flag = "<span class='pill-tag pill-red'>FEM MENTIONED</span>" if role.get("fem_mentioned") else ""
-                skills   = " ".join(f'<span class="pill-tag">{s}</span>' for s in role.get("skills", []))
+                title  = role.get("title", "Unknown role")
+                skills = role.get("skills", [])
+                fem    = role.get("fem_mentioned", False)
+
+                # Card container
                 st.markdown(f"""
-                <div class="vac-card">
-                    <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;'>
-                        <div style='font-weight:600;font-size:15px;'>{role.get('title','Unknown role')}</div>
-                        {fem_flag}
+                <div style="background:white;border:1px solid #e8e4dc;border-radius:8px;
+                     padding:16px 20px;margin-bottom:10px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                        <div style="font-weight:600;font-size:15px;color:#111;">{title}</div>
+                        {"<span style='font-family:\"JetBrains Mono\",monospace;font-size:10px;color:#c8471e;background:rgba(200,71,30,0.08);border:1px solid rgba(200,71,30,0.3);padding:3px 9px;border-radius:20px;'>FEM MENTIONED</span>" if fem else ""}
                     </div>
-                    <div>{skills}</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                        {"".join(f'<span style="font-family:\"JetBrains Mono\",monospace;font-size:10px;padding:3px 10px;border:1px solid #e0ddd5;border-radius:20px;color:#666;background:#faf9f6;">{s}</span>' for s in skills) if skills else '<span style="font-size:12px;color:#aaa;">No skills listed</span>'}
+                    </div>
                 </div>""", unsafe_allow_html=True)
         else:
             st.info("No relevant vacancies found on this website.")
-
+            
     # TAB 6 ── EXPORT ──────────────────────────────────────────────────────
     with t6:
         st.markdown('<div class="sec-label">Export Dossier</div>', unsafe_allow_html=True)

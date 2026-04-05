@@ -165,7 +165,10 @@ def crawl_site(base_url):
     priority = [
         "team", "people", "our-team",
         "leadership", "directors",
-        "about", "staff"
+        "about", "staff",
+        # 🔥 NEW (jobs)
+        "careers", "career", "jobs",
+        "vacancies", "join-us", "work-with-us"
     ]
 
     sorted_links = sorted(
@@ -187,7 +190,7 @@ def crawl_site(base_url):
 # -------------------------------
 def extract_company_name(pages, url):
     for page in pages:
-        for line in page["markdown"].split("\n")[:10]:
+        for line in page["markdown"].split("\n")[:15]:
             if 5 < len(line) < 80:
                 return line.strip()
 
@@ -272,9 +275,41 @@ def extract_company_text(pages):
     return combined[:25000]
 
 # -------------------------------
+# JOBS
+# -------------------------------
+
+def extract_jobs(pages):
+    job_keywords = [
+        "engineer", "structural", "bridge",
+        "geotechnical", "civil", "design",
+        "analysis", "fea", "fem", "software"
+    ]
+
+    jobs = []
+
+    for page in pages:
+        url = page["url"].lower()
+
+        # 🔥 only look at likely job pages
+        if not any(k in url for k in ["career", "job", "vacanc"]):
+            continue
+
+        lines = page["markdown"].split("\n")
+
+        for line in lines:
+            text = line.strip()
+
+            if 10 < len(text) < 120:
+                if any(k in text.lower() for k in job_keywords):
+                    jobs.append(text)
+
+    return list(set(jobs))[:20]
+
+
+# -------------------------------
 # LLM ANALYSIS (IMPROVED PROMPT)
 # -------------------------------
-def analyze(company, text, people, projects):
+def analyze(company, text, people, projects,jobs):
     if not people:
         people = "No people found"
 
@@ -289,6 +324,9 @@ People Found:
 
 Projects:
 {projects}
+
+Jobs Data:
+{jobs}
 
 Provide a FULL structured report based ONLY on the provided website data.
 
@@ -332,12 +370,23 @@ All must be in seperate bullet points
 
 (Heading must be exactly: Open Vacancy)
 
-List relevant openings in:
-Structural / Bridge / Geotechnical
-Mention:
-Role titles
-Any mention of FEM / FEA software
-If none found → clearly state: “No relevant vacancies found”
+Based ONLY on the Jobs Data provided:
+
+- Identify relevant roles in:
+  - Structural / Bridge / Geotechnical
+
+For each role:
+- Mention job title (if identifiable)
+- Mention key skills or tools
+- Highlight ANY mention of:
+  - FEM / FEA / analysis software
+
+Also provide:
+- Hiring trend insight (e.g. growing team, specialised roles)
+
+If no relevant jobs found:
+→ Clearly state: "No relevant vacancies found"
+
 7. LinkedIn Search Links
 
 (Heading must be exactly: LinkedIn Search)
@@ -345,6 +394,7 @@ If none found → clearly state: “No relevant vacancies found”
 Create clickable LinkedIn search URLs for each extracted person
 Use ONLY the name (no company or location)
 One seperate link per person
+
 8. Key Sales Signals 
 Identify:
 Hiring trends
@@ -352,6 +402,7 @@ Expansion indicators
 Technical maturity
 Project types
 Max 5 bullet points
+
 9. Pre-Meeting Cheat Sheet for MIDAS IT FEA Software Solutions
 
 Provide:
@@ -361,6 +412,7 @@ Provide:
 1 strong opening line
 
 Clearly mention missing or weak data areas
+
 IMPORTANT RULES:
 For each section, assign:
 High / Medium / Low confidence
@@ -381,7 +433,7 @@ Fill all the 9 points
             {"role": "user", "content": prompt}
         ],
         temperature=0.1,
-        max_tokens=2000
+        max_tokens=2500
     )
 
     return response.choices[0].message.content

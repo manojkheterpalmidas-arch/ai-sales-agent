@@ -811,6 +811,8 @@ if run:
                         {opening}
                     </span>
                 </div>''', unsafe_allow_html=True)
+
+    
 # TAB 5 ── VACANCIES ───────────────────────────────────────────────────
     with t5:
         roles = company_data.get("open_roles", [])
@@ -819,21 +821,37 @@ if run:
             if fem_n:
                 st.success(f"🎯 {fem_n} role(s) explicitly mention FEM/FEA — strong buying signal")
             st.markdown('<div class="sec-label">Open Roles</div>', unsafe_allow_html=True)
+
             for role in roles:
                 title  = role.get("title", "Unknown role")
                 skills = role.get("skills", [])
                 fem    = role.get("fem_mentioned", False)
 
-                # Card container
+                fem_badge = (
+                    '<span style="font-family:JetBrains Mono,monospace;font-size:10px;'
+                    'color:#c8471e;background:rgba(200,71,30,0.08);'
+                    'border:1px solid rgba(200,71,30,0.3);padding:3px 9px;'
+                    'border-radius:20px;">FEM MENTIONED</span>'
+                    if fem else ""
+                )
+
+                skill_pills = "".join(
+                    f'<span style="font-family:JetBrains Mono,monospace;font-size:10px;'
+                    f'padding:3px 10px;border:1px solid #e0ddd5;border-radius:20px;'
+                    f'color:#666;background:#faf9f6;">{s}</span>'
+                    for s in skills
+                ) if skills else '<span style="font-size:12px;color:#aaa;">No skills listed</span>'
+
                 st.markdown(f"""
                 <div style="background:white;border:1px solid #e8e4dc;border-radius:8px;
                      padding:16px 20px;margin-bottom:10px;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                    <div style="display:flex;justify-content:space-between;
+                         align-items:center;margin-bottom:10px;">
                         <div style="font-weight:600;font-size:15px;color:#111;">{title}</div>
-                        {"<span style='font-family:\"JetBrains Mono\",monospace;font-size:10px;color:#c8471e;background:rgba(200,71,30,0.08);border:1px solid rgba(200,71,30,0.3);padding:3px 9px;border-radius:20px;'>FEM MENTIONED</span>" if fem else ""}
+                        {fem_badge}
                     </div>
                     <div style="display:flex;flex-wrap:wrap;gap:6px;">
-                        {"".join(f'<span style="font-family:\"JetBrains Mono\",monospace;font-size:10px;padding:3px 10px;border:1px solid #e0ddd5;border-radius:20px;color:#666;background:#faf9f6;">{s}</span>' for s in skills) if skills else '<span style="font-size:12px;color:#aaa;">No skills listed</span>'}
+                        {skill_pills}
                     </div>
                 </div>""", unsafe_allow_html=True)
         else:

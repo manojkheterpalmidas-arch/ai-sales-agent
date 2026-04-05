@@ -322,7 +322,6 @@ a:hover { color: #a03518 !important;
 
 # ── CLIENTS ───────────────────────────────────────────────────────────────────
 deepseek = OpenAI(api_key=st.secrets["DEEPSEEK_API_KEY"], base_url="https://api.deepseek.com")
-FIRECRAWL_KEY = st.secrets["FIRECRAWL_API_KEY"]
 
 # ── FIRECRAWL ─────────────────────────────────────────────────────────────────
 
@@ -756,6 +755,34 @@ with col_logo:
     """, unsafe_allow_html=True)
 with col_user:
     st.markdown("<div style='text-align:right;font-size:12px;color:#888;padding-top:8px;font-family:\"JetBrains Mono\",monospace;'>Manoj | MIDAS IT</div>", unsafe_allow_html=True)
+
+# ── FIRECRAWL KEY INPUT ───────────────────────────────────────────────────────
+if not st.session_state.get("firecrawl_key"):
+    st.markdown('<div class="sec-label">API Configuration</div>', unsafe_allow_html=True)
+    fk_col1, fk_col2 = st.columns([5, 1])
+    with fk_col1:
+        fk_input = st.text_input(
+            "", 
+            placeholder="Enter your Firecrawl API key (fc-...)", 
+            type="password",
+            label_visibility="collapsed"
+        )
+    with fk_col2:
+        if st.button("Save Key"):
+            if fk_input.startswith("fc-"):
+                st.session_state["firecrawl_key"] = fk_input
+                st.rerun()
+            else:
+                st.error("Invalid key format")
+    st.info("🔑 Each team member uses their own Firecrawl API key. Get one at firecrawl.dev")
+    st.stop()
+else:
+    FIRECRAWL_KEY = st.session_state["firecrawl_key"]
+    # Small indicator + option to reset
+    with st.expander("🔑 Firecrawl key active", expanded=False):
+        if st.button("Clear key / Switch key"):
+            del st.session_state["firecrawl_key"]
+            st.rerun()
 
 # ── SEARCH ────────────────────────────────────────────────────────────────────
 c1, c2 = st.columns([5, 1])

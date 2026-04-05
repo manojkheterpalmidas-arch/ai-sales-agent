@@ -266,15 +266,16 @@ a:hover { color: #a03518 !important;
     border-radius: 8px; padding: 16px 20px; margin-bottom: 10px;
 }
 .opening-box {
-    background: #111; color: #f0ede6;
+    background: #111; color: #f0ede6 !important;
     border-radius: 8px; padding: 24px 28px;
     font-size: 15px; line-height: 1.8;
     font-style: italic; position: relative;
 }
+.opening-box, .opening-box * { color: #f0ede6 !important; }
 .opening-box::before {
     content: '"'; font-family: 'Syne', sans-serif;
     font-size: 72px; font-weight: 700;
-    color: rgba(200,71,30,0.4);
+    color: rgba(200,71,30,0.4) !important;
     position: absolute; top: -10px; left: 16px; line-height: 1;
 }
 .score-hot  { background: #fef0ed; color: #c8471e; border: 1px solid rgba(200,71,30,0.3); }
@@ -524,6 +525,7 @@ def export_md(company, cd, sd):
 
 
 # ── TOP BAR ───────────────────────────────────────────────────────────────────
+st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 col_logo, col_user = st.columns([6, 1])
 with col_logo:
     st.markdown("""

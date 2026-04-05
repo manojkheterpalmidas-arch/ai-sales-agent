@@ -394,7 +394,7 @@ If no relevant jobs found:
 Create clickable LinkedIn search URLs for each extracted person
 Use ONLY the name (no company or location)
 One seperate link per person
-Links must be clickable
+Links must be inserted as the names of the individual
 
 8. Key Sales Signals 
 Identify:

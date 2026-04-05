@@ -471,7 +471,7 @@ if st.button("Run Analysis"):
     text = extract_company_text(pages)
 
     with st.spinner("🧠 Analyzing..."):
-        result = analyze(company, text, people, projects)
+        result = analyze(company, text, people, projects,jobs)
 
     st.subheader("📊 Insights")
     st.write(result)

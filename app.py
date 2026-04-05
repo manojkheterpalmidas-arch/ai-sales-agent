@@ -43,7 +43,6 @@ if not st.session_state.authenticated:
     background: #c8471e !important;
     color: white !important;
 }
-/* Target the inner p tag Streamlit injects */
 div[data-testid="stButton"] > button > div > p,
 div[data-testid="stButton"] button p,
 div[data-testid="stButton"] button span,
@@ -95,52 +94,36 @@ html, body, [class*="css"] {
 }
 .stApp { background: #f7f6f2 !important; }
 
-/* Force text colour in all Streamlit containers */
-.stApp, .stApp * {
-    color: #111 !important;
-}
-/* Exempt buttons from global dark text override */
+.stApp, .stApp * { color: #111 !important; }
 .stApp .stButton button,
 .stApp .stButton button *,
 .stApp div[data-testid="stButton"] button,
-.stApp div[data-testid="stButton"] button * {
-    color: white !important;
-}
+.stApp div[data-testid="stButton"] button * { color: white !important; }
 .stMarkdown, .stMarkdown * { color: #111 !important; }
 .stText { color: #111 !important; }
 
-/* Tab panel content */
 .stTabs [data-baseweb="tab-panel"],
 .stTabs [data-baseweb="tab-panel"] * { color: #111 !important; }
 
-/* Expander content */
 .streamlit-expanderContent,
 .streamlit-expanderContent * { color: #111 !important; }
 
-/* Column containers */
 [data-testid="column"],
 [data-testid="column"] * { color: #111 !important; }
 
-/* Metric label and value */
 [data-testid="stMetricValue"] { color: #c8471e !important; }
 [data-testid="stMetricLabel"] { color: #888 !important; }
 [data-testid="stMetricDelta"] { color: #555 !important; }
 
-/* Info / success / warning boxes — keep their own text colours */
 .stAlert, .stAlert * { color: inherit !important; }
-
-/* Captions */
 .stCaptionContainer, .stCaptionContainer * { color: #888 !important; }
 
-/* Links must stay visible */
 a { color: #c8471e !important; }
-a:hover { color: #a03518 !important; 
-}
+a:hover { color: #a03518 !important; }
 .stApp { background: #f7f6f2 !important; }
 #MainMenu, footer { visibility: hidden; }
 .block-container { padding: 2rem 2rem 4rem !important; max-width: 1200px !important; }
 
-/* Buttons */
 .stButton > button {
     background: #111 !important; color: white !important;
     border: none !important; border-radius: 6px !important;
@@ -150,7 +133,6 @@ a:hover { color: #a03518 !important;
 }
 .stButton > button:hover { background: #c8471e !important; }
 
-/* Download button */
 .stDownloadButton > button {
     background: transparent !important; color: #c8471e !important;
     border: 1.5px solid #c8471e !important; border-radius: 6px !important;
@@ -160,7 +142,6 @@ a:hover { color: #a03518 !important;
 }
 .stDownloadButton > button:hover { background: rgba(200,71,30,0.06) !important; }
 
-/* Input */
 .stTextInput > div > div > input {
     background: white !important; color: #111 !important;
     border: 1.5px solid #e0ddd5 !important; border-radius: 8px !important;
@@ -173,7 +154,6 @@ a:hover { color: #a03518 !important;
 }
 .stTextInput > div > div > input::placeholder { color: #bbb !important; }
 
-/* Metric overrides */
 [data-testid="metric-container"] {
     background: white !important;
     border: 1px solid #e8e4dc !important;
@@ -191,7 +171,6 @@ a:hover { color: #a03518 !important;
     color: #888 !important; text-transform: uppercase !important;
 }
 
-/* Tabs */
 .stTabs [data-baseweb="tab-list"] {
     background: transparent !important;
     border-bottom: 2px solid #e8e4dc !important;
@@ -211,11 +190,9 @@ a:hover { color: #a03518 !important;
 }
 .stTabs [data-baseweb="tab-panel"] { padding-top: 24px !important; }
 
-/* Progress */
 .stProgress > div > div > div { background: #c8471e !important; border-radius: 2px !important; }
 .stProgress > div > div { background: #e8e4dc !important; border-radius: 2px !important; }
 
-/* Expander */
 .streamlit-expanderHeader {
     background: white !important;
     border: 1px solid #e8e4dc !important;
@@ -226,18 +203,15 @@ a:hover { color: #a03518 !important;
     color: #555 !important;
 }
 
-/* Alerts */
 .stSuccess, .stInfo, .stWarning, .stError {
     border-radius: 6px !important;
     font-family: 'Barlow', sans-serif !important;
     font-size: 14px !important;
 }
 
-/* Scrollbar */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-thumb { background: #ddd; border-radius: 2px; }
 
-/* Section label utility */
 .sec-label {
     font-family: 'JetBrains Mono', monospace;
     font-size: 10px; font-weight: 500;
@@ -247,7 +221,6 @@ a:hover { color: #a03518 !important;
 }
 .sec-label::after { content:''; flex:1; height:1px; background:#e8e4dc; }
 
-/* Cards */
 .insight-card {
     background: white;
     border: 1px solid #e8e4dc;
@@ -323,13 +296,14 @@ a:hover { color: #a03518 !important;
 # ── CLIENTS ───────────────────────────────────────────────────────────────────
 deepseek = OpenAI(api_key=st.secrets["DEEPSEEK_API_KEY"], base_url="https://api.deepseek.com")
 
-# ── FIRECRAWL ─────────────────────────────────────────────────────────────────
+# ── FIRECRAWL FUNCTIONS ───────────────────────────────────────────────────────
+# All functions read the key directly from session state at call time
 
 def firecrawl_scrape_single(url):
     try:
         resp = requests.post(
             "https://api.firecrawl.dev/v1/scrape",
-            headers={"Authorization": f"Bearer {FIRECRAWL_KEY}", "Content-Type": "application/json"},
+            headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}", "Content-Type": "application/json"},
             json={"url": url, "formats": ["markdown"]},
             timeout=20
         )
@@ -353,7 +327,7 @@ def firecrawl_multi_scrape(base_url):
         try:
             resp = requests.post(
                 "https://api.firecrawl.dev/v1/scrape",
-                headers={"Authorization": f"Bearer {FIRECRAWL_KEY}",
+                headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}",
                          "Content-Type": "application/json"},
                 json={"url": url, "formats": ["markdown"]},
                 timeout=20
@@ -418,7 +392,7 @@ def firecrawl_crawl(url, max_pages=15):
     try:
         resp = requests.post(
             "https://api.firecrawl.dev/v1/crawl",
-            headers={"Authorization": f"Bearer {FIRECRAWL_KEY}", "Content-Type": "application/json"},
+            headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}", "Content-Type": "application/json"},
             json={"url": url, "limit": max_pages, "scrapeOptions": {"formats": ["markdown"]}},
             timeout=30
         )
@@ -431,7 +405,7 @@ def firecrawl_crawl(url, max_pages=15):
             time.sleep(4)
             poll = requests.get(
                 f"https://api.firecrawl.dev/v1/crawl/{job_id}",
-                headers={"Authorization": f"Bearer {FIRECRAWL_KEY}"},
+                headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}"},
                 timeout=15
             ).json()
 
@@ -489,7 +463,7 @@ def analyze_company(corpus):
   "engineering_capabilities": ["bullet 1"],
   "project_types": ["bridge"],
   "software_mentioned": ["any FEA/CAD/BIM tools"],
-    "people": [{{"name": "Full Name", "role": "Job Title", "tier": "Owner|Founder|Director|Principal|Senior|Engineer|Graduate|Tec
+  "people": [{{"name": "Full Name", "role": "Job Title", "tier": "Owner|Founder|Director|Principal|Senior|Engineer|Graduate|Technician|Other"}}],
   "open_roles": [{{"title": "Job title", "skills": ["skill1"], "fem_mentioned": true}}],
   "confidence": "High|Medium|Low"
 }}
@@ -569,7 +543,6 @@ def export_pdf(company, cd, sd):
         topMargin=20*mm, bottomMargin=20*mm
     )
 
-    # ── COLOURS ──
     INK       = colors.HexColor("#111111")
     ACCENT    = colors.HexColor("#c8471e")
     MUTED     = colors.HexColor("#888888")
@@ -577,7 +550,6 @@ def export_pdf(company, cd, sd):
     BORDER    = colors.HexColor("#e8e4dc")
     WHITE     = colors.white
 
-    # ── STYLES ──
     def style(name, **kw):
         base = dict(fontName="Helvetica", fontSize=10, textColor=INK,
                     leading=16, spaceAfter=2)
@@ -603,8 +575,7 @@ def export_pdf(company, cd, sd):
     def section(title):
         story.append(Spacer(1, 4*mm))
         story.append(Paragraph(title.upper(), S_SECTION))
-        story.append(HRFlowable(width="100%", thickness=0.5,
-                                color=BORDER, spaceAfter=4))
+        story.append(HRFlowable(width="100%", thickness=0.5, color=BORDER, spaceAfter=4))
 
     def bullets(items):
         for item in items:
@@ -615,7 +586,6 @@ def export_pdf(company, cd, sd):
         story.append(Paragraph(value, S_BODY))
         story.append(Spacer(1, 2*mm))
 
-    # ── HEADER ──
     score     = sd.get("overall_score", "Warm")
     locs      = ", ".join(cd.get("locations", [])) or "—"
     emp       = cd.get("employee_count") or "—"
@@ -631,7 +601,6 @@ def export_pdf(company, cd, sd):
     story.append(Paragraph(sd.get("score_reason", ""), S_BODY))
     story.append(HRFlowable(width="100%", thickness=1, color=ACCENT, spaceAfter=6))
 
-    # ── COMPANY OVERVIEW ──
     section("Company Overview")
     bullets(cd.get("overview", []))
 
@@ -651,34 +620,28 @@ def export_pdf(company, cd, sd):
         section("Software & Tools")
         story.append(Paragraph("No competing software detected — clean FEA opportunity.", S_BODY))
 
-    # ── PEOPLE ──
     people = cd.get("people", [])
     if people:
         section("Key People")
         table_data = [["Name", "Role", "Tier"]]
         for p in people:
-            table_data.append([
-                p.get("name", ""),
-                p.get("role", ""),
-                p.get("tier", "")
-            ])
+            table_data.append([p.get("name", ""), p.get("role", ""), p.get("tier", "")])
         t = Table(table_data, colWidths=[55*mm, 80*mm, 30*mm])
         t.setStyle(TableStyle([
-            ("BACKGROUND",   (0, 0), (-1, 0),  colors.HexColor("#f0ede6")),
-            ("TEXTCOLOR",    (0, 0), (-1, 0),  INK),
-            ("FONTNAME",     (0, 0), (-1, 0),  "Helvetica-Bold"),
-            ("FONTSIZE",     (0, 0), (-1, 0),  8),
-            ("FONTSIZE",     (0, 1), (-1, -1), 9),
-            ("ROWBACKGROUNDS",(0,1), (-1,-1),  [WHITE, LIGHT_BG]),
-            ("GRID",         (0, 0), (-1, -1), 0.3, BORDER),
-            ("TOPPADDING",   (0, 0), (-1, -1), 5),
-            ("BOTTOMPADDING",(0, 0), (-1, -1), 5),
-            ("LEFTPADDING",  (0, 0), (-1, -1), 6),
-            ("VALIGN",       (0, 0), (-1, -1), "MIDDLE"),
+            ("BACKGROUND",    (0, 0), (-1, 0),  colors.HexColor("#f0ede6")),
+            ("TEXTCOLOR",     (0, 0), (-1, 0),  INK),
+            ("FONTNAME",      (0, 0), (-1, 0),  "Helvetica-Bold"),
+            ("FONTSIZE",      (0, 0), (-1, 0),  8),
+            ("FONTSIZE",      (0, 1), (-1, -1), 9),
+            ("ROWBACKGROUNDS",(0, 1), (-1, -1), [WHITE, LIGHT_BG]),
+            ("GRID",          (0, 0), (-1, -1), 0.3, BORDER),
+            ("TOPPADDING",    (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 6),
+            ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
         ]))
         story.append(t)
 
-    # ── FEM OPPORTUNITIES ──
     section("FEM / FEA Opportunities")
     bullets(sd.get("fem_opportunities", []))
 
@@ -686,7 +649,6 @@ def export_pdf(company, cd, sd):
     for sig in sd.get("hiring_signals", []) + sd.get("expansion_signals", []):
         story.append(Paragraph(f"▲  {sig}", S_BULLET))
 
-    # ── SALES STRATEGY ──
     section("Sales Strategy")
     label_value("Entry Point", sd.get("entry_point", "—"))
     label_value("Value Positioning", sd.get("value_positioning", "—"))
@@ -697,9 +659,7 @@ def export_pdf(company, cd, sd):
         bullets(objs)
         story.append(Spacer(1, 2*mm))
 
-    # ── PRE-MEETING CHEAT SHEET ──
     section("Pre-Meeting Cheat Sheet")
-
     story.append(Paragraph("3 THINGS TO MENTION", S_LABEL))
     for m in sd.get("pre_meeting_mention", []):
         story.append(Paragraph(f"✓  {m}", S_BULLET))
@@ -713,7 +673,6 @@ def export_pdf(company, cd, sd):
     story.append(Paragraph("OPENING LINE", S_LABEL))
     story.append(Paragraph(sd.get("opening_line", "—"), S_ITALIC))
 
-    # ── VACANCIES ──
     roles = cd.get("open_roles", [])
     if roles:
         section("Open Vacancies")
@@ -725,7 +684,6 @@ def export_pdf(company, cd, sd):
             story.append(Paragraph(f"Skills: {skills}", S_META))
             story.append(Spacer(1, 1*mm))
 
-    # ── FOOTER ──
     story.append(Spacer(1, 8*mm))
     story.append(HRFlowable(width="100%", thickness=0.5, color=BORDER))
     story.append(Paragraph(
@@ -758,28 +716,38 @@ with col_user:
 
 # ── FIRECRAWL KEY INPUT ───────────────────────────────────────────────────────
 if not st.session_state.get("firecrawl_key"):
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
     st.markdown('<div class="sec-label">API Configuration</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div style='background:white;border:1px solid #e8e4dc;border-radius:8px;padding:20px 24px;margin-bottom:16px;'>
+        <div style='font-weight:600;font-size:15px;color:#111;margin-bottom:6px;'>Firecrawl API Key Required</div>
+        <div style='font-size:13px;color:#888;'>Each team member uses their own key. Get yours free at
+            <a href='https://firecrawl.dev' target='_blank'>firecrawl.dev</a>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     fk_col1, fk_col2 = st.columns([5, 1])
     with fk_col1:
         fk_input = st.text_input(
-            "", 
-            placeholder="Enter your Firecrawl API key (fc-...)", 
+            "",
+            placeholder="Enter your Firecrawl API key (fc-...)",
             type="password",
             label_visibility="collapsed"
         )
     with fk_col2:
-        if st.button("Save Key"):
-            if fk_input.startswith("fc-"):
+        if st.button("Save Key →", use_container_width=True):
+            if fk_input and fk_input.startswith("fc-"):
                 st.session_state["firecrawl_key"] = fk_input
                 st.rerun()
+            elif fk_input:
+                st.error("Key must start with fc-")
             else:
-                st.error("Invalid key format")
-    st.info("🔑 Each team member uses their own Firecrawl API key. Get one at firecrawl.dev")
+                st.error("Please enter a key")
     st.stop()
 else:
-    FIRECRAWL_KEY = st.session_state["firecrawl_key"]
-    # Small indicator + option to reset
+    # Key is set — show a small dismissible indicator in the top right area
     with st.expander("🔑 Firecrawl key active", expanded=False):
+        st.caption(f"Key ending in ...{st.session_state['firecrawl_key'][-6:]}")
         if st.button("Clear key / Switch key"):
             del st.session_state["firecrawl_key"]
             st.rerun()
@@ -834,8 +802,8 @@ if run:
     company_name = company_data.get("company_name", website)
     score        = sales_data.get("overall_score", "Warm")
     score_reason = sales_data.get("score_reason", "")
-    locs_list = company_data.get("locations", [])
-    locs = " · ".join(locs_list) if locs_list else "—"
+    locs_list    = company_data.get("locations", [])
+    locs         = " · ".join(locs_list) if locs_list else "—"
     emp          = company_data.get("employee_count") or "—"
     conf         = company_data.get("confidence", "Medium")
 
@@ -860,7 +828,6 @@ if run:
 
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
-    # ── METRICS — native st.metric, no raw HTML ───────────────────────────
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("People Identified",  len(company_data.get("people", [])))
     m2.metric("FEM Opportunities",  len(sales_data.get("fem_opportunities", [])))
@@ -904,12 +871,11 @@ if run:
             else:
                 st.success("No competing software detected — clean opportunity to introduce MIDAS as first FEA tool")
 
-  # TAB 2 ── PEOPLE ──────────────────────────────────────────────────────
+    # TAB 2 ── PEOPLE ──────────────────────────────────────────────────────
     with t2:
         people = company_data.get("people", [])
         if people:
             tier_order = ["Owner", "Founder", "Director", "Principal", "Senior", "Engineer", "Graduate", "Technician", "Other"]
-            # Group by tier, preserve order
             grouped = {}
             for p in people:
                 tier = p.get("tier", "Other")
@@ -943,7 +909,6 @@ if run:
                         st.markdown(f"<a href='{li_url(name)}' target='_blank' style='font-family:\"JetBrains Mono\",monospace;font-size:11px;color:#c8471e;text-decoration:none;border:1px solid rgba(200,71,30,0.4);padding:5px 12px;border-radius:4px;white-space:nowrap;'>LinkedIn ↗</a>", unsafe_allow_html=True)
                 st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
-            # Show unmatched tier people too — catch-all so nobody is dropped
             all_shown_tiers = set(tier_order)
             leftover = [p for p in people if p.get("tier", "Other") not in all_shown_tiers]
             if leftover:
@@ -1020,8 +985,7 @@ if run:
                     </span>
                 </div>''', unsafe_allow_html=True)
 
-    
-# TAB 5 ── VACANCIES ───────────────────────────────────────────────────
+    # TAB 5 ── VACANCIES ───────────────────────────────────────────────────
     with t5:
         roles = company_data.get("open_roles", [])
         if roles:
@@ -1036,7 +1000,6 @@ if run:
                 skills = role.get("skills", [])
                 fem    = role.get("fem_mentioned", False)
 
-                # Build pieces as plain strings — no backslashes in f-strings
                 fem_html = ""
                 if fem:
                     fem_html = (
@@ -1065,7 +1028,6 @@ if run:
                 card_html = (
                     '<div style="background:white;border:1px solid #e8e4dc;'
                     'border-radius:8px;padding:16px 20px;margin-bottom:10px;">'
-
                     '<div style="display:flex;justify-content:space-between;'
                     'align-items:center;margin-bottom:10px;">'
                     '<div style="font-weight:600;font-size:15px;color:#111;">'
@@ -1073,19 +1035,17 @@ if run:
                     '</div>'
                     + fem_html +
                     '</div>'
-
                     '<div style="display:flex;flex-wrap:wrap;gap:6px;">'
                     + pills_html +
                     '</div>'
-
                     '</div>'
                 )
 
                 st.markdown(card_html, unsafe_allow_html=True)
         else:
             st.info("No relevant vacancies found on this website.")
-            
-  # TAB 6 ── EXPORT ──────────────────────────────────────────────────────
+
+    # TAB 6 ── EXPORT ──────────────────────────────────────────────────────
     with t6:
         st.markdown('<div class="sec-label">Export Dossier</div>', unsafe_allow_html=True)
 

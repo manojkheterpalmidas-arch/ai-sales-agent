@@ -71,6 +71,42 @@ html, body, [class*="css"] {
     color: #111 !important;
 }
 .stApp { background: #f7f6f2 !important; }
+
+/* Force text colour in all Streamlit containers */
+.stApp, .stApp * {
+    color: #111 !important;
+}
+.stMarkdown, .stMarkdown * { color: #111 !important; }
+.stText { color: #111 !important; }
+
+/* Tab panel content */
+.stTabs [data-baseweb="tab-panel"],
+.stTabs [data-baseweb="tab-panel"] * { color: #111 !important; }
+
+/* Expander content */
+.streamlit-expanderContent,
+.streamlit-expanderContent * { color: #111 !important; }
+
+/* Column containers */
+[data-testid="column"],
+[data-testid="column"] * { color: #111 !important; }
+
+/* Metric label and value */
+[data-testid="stMetricValue"] { color: #c8471e !important; }
+[data-testid="stMetricLabel"] { color: #888 !important; }
+[data-testid="stMetricDelta"] { color: #555 !important; }
+
+/* Info / success / warning boxes — keep their own text colours */
+.stAlert, .stAlert * { color: inherit !important; }
+
+/* Captions */
+.stCaptionContainer, .stCaptionContainer * { color: #888 !important; }
+
+/* Links must stay visible */
+a { color: #c8471e !important; }
+a:hover { color: #a03518 !important; 
+}
+.stApp { background: #f7f6f2 !important; }
 #MainMenu, footer { visibility: hidden; }
 .block-container { padding: 2rem 2rem 4rem !important; max-width: 1200px !important; }
 
@@ -327,10 +363,15 @@ def analyze_company(corpus):
   "engineering_capabilities": ["bullet 1"],
   "project_types": ["bridge"],
   "software_mentioned": ["any FEA/CAD/BIM tools"],
-  "people": [{{"name": "Full Name", "role": "Job Title", "tier": "Director|Senior|Engineer"}}],
+    "people": [{{"name": "Full Name", "role": "Job Title", "tier": "Owner|Founder|Director|Principal|Senior|Engineer|Graduate|Tec
   "open_roles": [{{"title": "Job title", "skills": ["skill1"], "fem_mentioned": true}}],
   "confidence": "High|Medium|Low"
 }}
+Extract ALL people mentioned anywhere on the site — team pages, about pages, project pages, news, 
+contact pages. Include owners, founders, directors, engineers at all levels, technicians, and 
+graduate engineers. Do NOT limit to senior staff only. If a name appears with any role or title, 
+include them.
+
 Website content:
 {corpus}"""
     )
@@ -519,14 +560,31 @@ if run:
             else:
                 st.success("No competing software detected — clean opportunity to introduce MIDAS as first FEA tool")
 
-    # TAB 2 ── PEOPLE ──────────────────────────────────────────────────────
+  # TAB 2 ── PEOPLE ──────────────────────────────────────────────────────
     with t2:
         people = company_data.get("people", [])
         if people:
-            for tier, icon in [("Director", "◈"), ("Senior", "◆"), ("Engineer", "◇")]:
-                tier_ppl = [p for p in people if p.get("tier") == tier]
+            tier_order = ["Owner", "Founder", "Director", "Principal", "Senior", "Engineer", "Graduate", "Technician", "Other"]
+            # Group by tier, preserve order
+            grouped = {}
+            for p in people:
+                tier = p.get("tier", "Other")
+                if tier not in grouped:
+                    grouped[tier] = []
+                grouped[tier].append(p)
+
+            tier_icons = {
+                "Owner": "★", "Founder": "★",
+                "Director": "◈", "Principal": "◈",
+                "Senior": "◆", "Engineer": "◇",
+                "Graduate": "◇", "Technician": "◇", "Other": "·"
+            }
+
+            for tier in tier_order:
+                tier_ppl = grouped.get(tier, [])
                 if not tier_ppl:
                     continue
+                icon = tier_icons.get(tier, "·")
                 st.markdown(f'<div class="sec-label">{icon} {tier}s</div>', unsafe_allow_html=True)
                 for p in tier_ppl:
                     name = p.get("name", "")
@@ -540,6 +598,23 @@ if run:
                     with pc3:
                         st.markdown(f"<a href='{li_url(name)}' target='_blank' style='font-family:\"JetBrains Mono\",monospace;font-size:11px;color:#c8471e;text-decoration:none;border:1px solid rgba(200,71,30,0.4);padding:5px 12px;border-radius:4px;white-space:nowrap;'>LinkedIn ↗</a>", unsafe_allow_html=True)
                 st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+
+            # Show unmatched tier people too — catch-all so nobody is dropped
+            all_shown_tiers = set(tier_order)
+            leftover = [p for p in people if p.get("tier", "Other") not in all_shown_tiers]
+            if leftover:
+                st.markdown('<div class="sec-label">· Other</div>', unsafe_allow_html=True)
+                for p in leftover:
+                    name = p.get("name", "")
+                    role = p.get("role", "")
+                    pc1, pc2, pc3 = st.columns([1, 6, 2])
+                    with pc1:
+                        st.markdown(f'<div class="av">{ini(name)}</div>', unsafe_allow_html=True)
+                    with pc2:
+                        st.markdown(f"<div style='font-weight:600;font-size:14px;padding-top:4px;'>{name}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='font-size:12px;color:#888;font-family:\"JetBrains Mono\",monospace;'>{role}</div>", unsafe_allow_html=True)
+                    with pc3:
+                        st.markdown(f"<a href='{li_url(name)}' target='_blank' style='font-family:\"JetBrains Mono\",monospace;font-size:11px;color:#c8471e;text-decoration:none;border:1px solid rgba(200,71,30,0.4);padding:5px 12px;border-radius:4px;white-space:nowrap;'>LinkedIn ↗</a>", unsafe_allow_html=True)
         else:
             st.info("No people identified. The site may not have a public team page.")
 

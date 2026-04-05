@@ -12,7 +12,7 @@ if "authenticated" not in st.session_state:
 PASSCODE = "5487"
 
 if not st.session_state.authenticated:
-    st.set_page_config(page_title="MIDAS Intel", page_icon="🔐", layout="centered")
+    st.set_page_config(page_title="MIDAS Pre Sales Intel", page_icon="🔐", layout="centered")
     st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700&family=JetBrains+Mono:wght@400&display=swap');
@@ -82,7 +82,7 @@ div[data-testid="stButton"] button * {
     st.stop()
 
 # ── PAGE CONFIG ───────────────────────────────────────────────────────────────
-st.set_page_config(page_title="MIDAS Sales Intelligence", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="MIDAS Pre Sales Intelligence", layout="wide", page_icon="🚀")
 
 st.markdown("""
 <style>
@@ -565,7 +565,7 @@ with col_logo:
         </div>
         <div style='font-family:"JetBrains Mono",monospace;font-size:10px;color:#bbb;letter-spacing:0.1em;
              background:#f0ede6;border:1px solid #e0ddd5;padding:3px 10px;border-radius:20px;'>
-            SALES INTELLIGENCE v2
+            SALES INTELLIGENCE
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -792,7 +792,16 @@ if run:
             st.markdown('<div class="sec-label" style="margin-top:24px;">Opening Line</div>', unsafe_allow_html=True)
             opening = sales_data.get("opening_line", "")
             if opening:
-                st.markdown(f'<div class="opening-box">{opening}</div>', unsafe_allow_html=True)
+                st.markdown(f'''
+                <div style="background:#111;border-radius:8px;padding:24px 28px;
+                     font-size:15px;line-height:1.8;font-style:italic;position:relative;">
+                    <span style="font-family:Syne,sans-serif;font-size:72px;font-weight:700;
+                         color:rgba(200,71,30,0.4);position:absolute;top:-10px;left:16px;
+                         line-height:1;">"</span>
+                    <span style="color:#f0ede6 !important;display:block;padding-left:20px;">
+                        {opening}
+                    </span>
+                </div>''', unsafe_allow_html=True)
 
     # TAB 5 ── VACANCIES ───────────────────────────────────────────────────
     with t5:

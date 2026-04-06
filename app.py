@@ -343,7 +343,7 @@ def firecrawl_multi_scrape(base_url):
     return results
 
 
-def firecrawl_crawl(url, max_pages=15):
+def firecrawl_crawl(url, max_pages=30):
     try:
         resp = requests.post(
             "https://api.firecrawl.dev/v1/crawl",

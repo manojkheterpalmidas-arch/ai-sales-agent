@@ -397,11 +397,11 @@ def build_corpus(pages):
     return "\n\n---\n\n".join(chunks)[:40000]
 
 # ── AI ────────────────────────────────────────────────────────────────────────
-def ask_deepseek(system, user, max_tokens=2000):
+def ask_deepseek(system, user, max_tokens=2000, temperature=0.1):
     resp = deepseek.chat.completions.create(
         model="deepseek-chat",
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-        temperature=0.1, max_tokens=max_tokens
+        temperature=temperature, max_tokens=max_tokens
     )
     return resp.choices[0].message.content.strip()
 
@@ -476,7 +476,8 @@ Requirements:
 - Sign off as the MIDAS IT team
 
 Return plain text only.""",
-        max_tokens=800
+        max_tokens=800,
+        temperature=0.4
     )
 
 

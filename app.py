@@ -686,6 +686,10 @@ with sidebar:
     st.markdown('<div class="sec-label">Recent Searches</div>', unsafe_allow_html=True)
     history = load_history()
 
+    search_query = st.text_input("", placeholder="🔍 Search companies...", label_visibility="collapsed")
+    if search_query:
+        history = [h for h in history if search_query.lower() in h.get("company", "").lower() or search_query.lower() in h.get("domain", "").lower()]
+
     if not history:
         st.markdown("<div style='font-size:12px;color:#aaa;font-family:JetBrains Mono,monospace;padding:8px 0;'>No searches yet</div>", unsafe_allow_html=True)
     else:

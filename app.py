@@ -735,6 +735,7 @@ with sidebar:
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────
 with main:
+    run = False
     c1, c2 = st.columns([5, 1])
     with c1:
         default_url = ""

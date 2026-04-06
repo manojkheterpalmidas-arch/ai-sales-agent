@@ -737,7 +737,13 @@ with sidebar:
 with main:
     c1, c2 = st.columns([5, 1])
     with c1:
-        website = st.text_input("", placeholder="https://target-engineering-company.com", label_visibility="collapsed")
+        default_url = ""
+if "loaded_report" in st.session_state and not run:
+    default_url = st.session_state["loaded_report"].get("domain", "")
+    if default_url:
+        default_url = "https://" + default_url
+
+website = st.text_input("", value=default_url, placeholder="https://target-engineering-company.com", label_visibility="collapsed")
     with c2:
         run = st.button("Analyse →", use_container_width=True)
 
@@ -1015,8 +1021,10 @@ with main:
             st.markdown('<div class="sec-label">Cold Outreach Email</div>', unsafe_allow_html=True)
             st.markdown("<div style='background:white;border:1px solid #e8e4dc;border-radius:8px;padding:16px 20px;margin-bottom:16px;font-size:13px;color:#888;'>Generate a personalised cold email based on the company intelligence. Edit before sending.</div>", unsafe_allow_html=True)
 
-            if "generated_email" not in st.session_state:
-                st.session_state["generated_email"] = ""
+            current_domain = active_domain
+            if st.session_state.get("email_domain") != current_domain:
+            st.session_state["generated_email"] = ""
+            st.session_state["email_domain"] = current_domain
 
             if st.button("✉ Generate Email Draft"):
                 with st.spinner("Writing email..."):

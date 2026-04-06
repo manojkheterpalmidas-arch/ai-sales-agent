@@ -30,7 +30,6 @@ def save_history(entry):
     history = load_history()
     history = [h for h in history if h.get("domain") != entry["domain"]]
     history.insert(0, entry)
-    history = history[:20]
     HISTORY_FILE.write_text(json.dumps(history, indent=2))
 
 def load_notes():

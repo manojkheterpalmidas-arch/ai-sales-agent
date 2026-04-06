@@ -85,62 +85,6 @@ def days_ago(date_str):
     except:
         return "recently"
 
-# ── AUTH ──────────────────────────────────────────────────────────────────────
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
-
-PASSCODE = "5487"
-
-if not st.session_state.authenticated:
-    st.set_page_config(page_title="MIDAS Pre Sales Intel", page_icon="🔐", layout="centered")
-    st.markdown("""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700&family=JetBrains+Mono:wght@400&display=swap');
-    html, body, [class*="css"] { background: #f7f6f2 !important; font-family: 'Syne', sans-serif; }
-    .stApp { background: #f7f6f2 !important; }
-    .stTextInput > div > div > input {
-        background: white !important; color: #111 !important;
-        border: 1.5px solid #ddd !important; border-radius: 6px !important;
-        font-family: 'JetBrains Mono', monospace !important;
-        font-size: 22px !important; letter-spacing: 0.4em !important;
-        text-align: center !important; padding: 14px !important;
-        caret-color: #c8471e !important;
-    }
-    .stTextInput > div > div > input:focus { border-color: #c8471e !important; box-shadow: 0 0 0 3px rgba(200,71,30,0.1) !important; }
-    .stButton > button {
-        background: #111 !important; color: white !important;
-        border: none !important; border-radius: 6px !important;
-        font-family: 'Syne', sans-serif !important; font-weight: 700 !important;
-        font-size: 13px !important; letter-spacing: 0.1em !important;
-        text-transform: uppercase !important; padding: 11px 28px !important;
-    }
-    .stButton > button:hover { background: #c8471e !important; color: white !important; }
-    div[data-testid="stButton"] > button > div > p,
-    div[data-testid="stButton"] button p,
-    div[data-testid="stButton"] button span,
-    div[data-testid="stButton"] button * { color: white !important; font-family: 'Syne', sans-serif !important; font-weight: 700 !important; }
-    </style>
-    """, unsafe_allow_html=True)
-
-    st.markdown("<div style='height:60px'></div>", unsafe_allow_html=True)
-    c1, c2, c3 = st.columns([1, 2, 1])
-    with c2:
-        st.markdown("""
-        <div style='text-align:center;margin-bottom:32px;'>
-            <div style='font-family:Syne,sans-serif;font-size:11px;letter-spacing:0.3em;color:#c8471e;text-transform:uppercase;margin-bottom:6px;'>MIDAS IT</div>
-            <div style='font-family:Syne,sans-serif;font-size:32px;font-weight:700;color:#111;'>Sales Intelligence</div>
-            <div style='width:32px;height:3px;background:#c8471e;margin:12px auto 0;'></div>
-        </div>
-        """, unsafe_allow_html=True)
-        code = st.text_input("", type="password", placeholder="· · · ·", label_visibility="collapsed")
-        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-        if st.button("UNLOCK"):
-            if code == PASSCODE:
-                st.session_state.authenticated = True
-                st.rerun()
-            else:
-                st.error("Incorrect passcode")
-    st.stop()
 
 # ── PAGE CONFIG ───────────────────────────────────────────────────────────────
 st.set_page_config(page_title="MIDAS Pre Sales Intelligence", layout="wide", page_icon="🚀")

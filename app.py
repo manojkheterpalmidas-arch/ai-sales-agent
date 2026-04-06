@@ -377,7 +377,17 @@ def firecrawl_crawl(url, max_pages=30):
     except:
         return firecrawl_multi_scrape(url)
 
-
+def get_firecrawl_credits():
+    try:
+        resp = requests.get(
+            "https://api.firecrawl.dev/v1/team/credits",
+            headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}"},
+            timeout=10
+        )
+        data = resp.json()
+        return data.get("credits", None)
+    except:
+        return None
 # ── TEXT PREP ─────────────────────────────────────────────────────────────────
 def build_corpus(pages):
     chunks = [
@@ -657,8 +667,15 @@ with col_logo:
     </div>
     """, unsafe_allow_html=True)
 with col_user:
-    st.markdown("<div style='text-align:right;font-size:12px;color:#888;padding-top:8px;font-family:\"JetBrains Mono\",monospace;'>Manoj | MIDAS IT</div>", unsafe_allow_html=True)
-
+    credits = get_firecrawl_credits()
+    credit_display = f"⚡ {credits} credits" if credits is not None else "⚡ —"
+    st.markdown(f"""
+    <div style='text-align:right;padding-top:4px;'>
+        <div style='font-size:12px;color:#888;font-family:"JetBrains Mono",monospace;'>Manoj | MIDAS IT</div>
+        <div style='font-size:11px;color:#c8471e;font-family:"JetBrains Mono",monospace;margin-top:2px;'>{credit_display}</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
 # ── FIRECRAWL KEY INPUT ───────────────────────────────────────────────────────
 if not st.session_state.get("firecrawl_key"):
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)

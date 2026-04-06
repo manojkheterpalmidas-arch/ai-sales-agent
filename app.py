@@ -738,12 +738,12 @@ with main:
     c1, c2 = st.columns([5, 1])
     with c1:
         default_url = ""
-    if "loaded_report" in st.session_state and not run:
-    default_url = st.session_state["loaded_report"].get("domain", "")
-    if default_url:
-        default_url = "https://" + default_url
+        if "loaded_report" in st.session_state and not run:
+            default_url = st.session_state["loaded_report"].get("domain", "")
+            if default_url:
+                default_url = "https://" + default_url
 
-website = st.text_input("", value=default_url, placeholder="https://target-engineering-company.com", label_visibility="collapsed")
+        website = st.text_input("", value=default_url, placeholder="https://target-engineering-company.com", label_visibility="collapsed")
     with c2:
         run = st.button("Analyse →", use_container_width=True)
 

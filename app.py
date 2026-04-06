@@ -648,7 +648,7 @@ with col_logo:
     st.markdown("""
     <div style='display:flex;align-items:center;gap:12px;padding:4px 0 20px;'>
         <div style='font-family:Syne,sans-serif;font-size:20px;font-weight:700;color:#111;letter-spacing:0.05em;'>
-            MIDAS <span style='color:#c8471e;'>·</span> INTEL
+            MIDAS <span style='color:#c8471e;'>·</span> PRESALES INTEL
         </div>
         <div style='font-family:"JetBrains Mono",monospace;font-size:10px;color:#bbb;letter-spacing:0.1em;
              background:#f0ede6;border:1px solid #e0ddd5;padding:3px 10px;border-radius:20px;'>

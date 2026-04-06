@@ -1048,12 +1048,7 @@ with main:
                 fname = f"MIDAS_Intel_{company_name.replace(' ','_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
                 st.download_button("📥  Download PDF", data=pdf_bytes, file_name=fname, mime="application/pdf")
 
-                st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-                st.markdown('<div class="sec-label">Raw JSON</div>', unsafe_allow_html=True)
-                with st.expander("Company data"):
-                    st.json(company_data)
-                with st.expander("Sales strategy"):
-                    st.json(sales_data)
+
 
             with eb:
                 st.markdown('<div class="sec-label">Rep Notes</div>', unsafe_allow_html=True)

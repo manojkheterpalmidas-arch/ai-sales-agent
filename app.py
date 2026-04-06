@@ -272,7 +272,7 @@ deepseek = OpenAI(api_key=st.secrets["DEEPSEEK_API_KEY"], base_url="https://api.
 def firecrawl_scrape_single(url):
     try:
         resp = requests.post(
-            "https://api.firecrawl.dev/v1/scrape",
+            "https://api.firecrawl.dev/v1/credits",
             headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}", "Content-Type": "application/json"},
             json={"url": url, "formats": ["markdown"]}, timeout=20
         )

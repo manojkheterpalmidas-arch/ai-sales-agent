@@ -339,8 +339,8 @@ def firecrawl_crawl(url, max_pages=15):
             return firecrawl_multi_scrape(url)
 
         import time
-        for _ in range(25):
-            time.sleep(4)
+        for _ in range(36):
+            time.sleep(5)
             poll = requests.get(
                 f"https://api.firecrawl.dev/v1/crawl/{job_id}",
                 headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}"},
@@ -348,7 +348,7 @@ def firecrawl_crawl(url, max_pages=15):
             ).json()
             status = poll.get("status")
             pages  = poll.get("data", [])
-            if status == "completed" or (status == "scraping" and len(pages) >= 5):
+            if status == "completed" or (status == "scraping" and len(pages) >= max_pages - 2):
                 results = [
                     {"url": p.get("metadata", {}).get("sourceURL", url), "markdown": p.get("markdown", "")}
                     for p in pages if p.get("markdown", "").strip()

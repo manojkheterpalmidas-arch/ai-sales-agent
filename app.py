@@ -1023,8 +1023,8 @@ with main:
 
             current_domain = active_domain
             if st.session_state.get("email_domain") != current_domain:
-            st.session_state["generated_email"] = ""
-            st.session_state["email_domain"] = current_domain
+                st.session_state["generated_email"] = ""
+                st.session_state["email_domain"] = current_domain
 
             if st.button("✉ Generate Email Draft"):
                 with st.spinner("Writing email..."):

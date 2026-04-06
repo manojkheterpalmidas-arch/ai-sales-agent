@@ -738,7 +738,7 @@ with main:
     c1, c2 = st.columns([5, 1])
     with c1:
         default_url = ""
-if "loaded_report" in st.session_state and not run:
+    if "loaded_report" in st.session_state and not run:
     default_url = st.session_state["loaded_report"].get("domain", "")
     if default_url:
         default_url = "https://" + default_url

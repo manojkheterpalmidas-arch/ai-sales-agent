@@ -3,57 +3,74 @@ from openai import OpenAI
 import requests
 import json
 import re
-import os
 from datetime import datetime
-from pathlib import Path
+from supabase import create_client, Client
 
-# ── STORAGE PATHS ─────────────────────────────────────────────────────────────
-STORAGE_DIR = Path("C:/MIDAS_Intel")
-HISTORY_FILE = STORAGE_DIR / "midas_history.json"
-NOTES_FILE   = STORAGE_DIR / "midas_notes.json"
+# ── SUPABASE CLIENT ───────────────────────────────────────────────────────────
+@st.cache_resource
+def get_supabase() -> Client:
+    return create_client(
+        st.secrets["SUPABASE_URL"],
+        st.secrets["SUPABASE_KEY"]
+    )
 
-def ensure_storage():
-    STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-    if not HISTORY_FILE.exists():
-        HISTORY_FILE.write_text("[]")
-    if not NOTES_FILE.exists():
-        NOTES_FILE.write_text("{}")
+supabase = get_supabase()
 
+# ── STORAGE FUNCTIONS ─────────────────────────────────────────────────────────
 def load_history():
-    ensure_storage()
     try:
-        return json.loads(HISTORY_FILE.read_text())
+        res = supabase.table("midas_history").select("*").order("date", desc=True).execute()
+        return res.data or []
     except:
         return []
 
 def save_history(entry):
-    history = load_history()
-    history = [h for h in history if h.get("domain") != entry["domain"]]
-    history.insert(0, entry)
-    HISTORY_FILE.write_text(json.dumps(history, indent=2))
+    try:
+        supabase.table("midas_history").upsert({
+            "domain":       entry["domain"],
+            "company":      entry["company"],
+            "score":        entry["score"],
+            "date":         entry["date"],
+            "pages_count":  entry["pages_count"],
+            "company_data": entry["company_data"],
+            "sales_data":   entry["sales_data"],
+        }, on_conflict="domain").execute()
+    except Exception as e:
+        st.warning(f"Could not save history: {e}")
+
+def find_in_history(domain):
+    try:
+        res = supabase.table("midas_history").select("*").eq("domain", domain).execute()
+        return res.data[0] if res.data else None
+    except:
+        return None
 
 def load_notes():
-    ensure_storage()
     try:
-        return json.loads(NOTES_FILE.read_text())
+        res = supabase.table("midas_notes").select("*").execute()
+        return {r["domain"]: {"text": r["note_text"], "updated": r["updated"]} for r in res.data}
     except:
         return {}
 
 def save_note(domain, note):
-    notes = load_notes()
-    notes[domain] = {"text": note, "updated": datetime.now().strftime("%d %b %Y %H:%M")}
-    NOTES_FILE.write_text(json.dumps(notes, indent=2))
+    try:
+        supabase.table("midas_notes").upsert({
+            "domain":    domain,
+            "note_text": note,
+            "updated":   datetime.now().strftime("%d %b %Y %H:%M")
+        }, on_conflict="domain").execute()
+    except Exception as e:
+        st.warning(f"Could not save note: {e}")
 
 def get_note(domain):
-    notes = load_notes()
-    return notes.get(domain, {})
-
-def find_in_history(domain):
-    history = load_history()
-    for h in history:
-        if h.get("domain") == domain:
-            return h
-    return None
+    try:
+        res = supabase.table("midas_notes").select("*").eq("domain", domain).execute()
+        if res.data:
+            r = res.data[0]
+            return {"text": r["note_text"], "updated": r["updated"]}
+    except:
+        pass
+    return {}
 
 def days_ago(date_str):
     try:
@@ -398,9 +415,7 @@ def analyze_company(corpus):
   "confidence": "High|Medium|Low",
   "confidence_reason": "One sentence explaining why confidence is High, Medium or Low based on data quality and completeness of the website"
 }}
-
 Extract ALL people. For locations: ONLY explicitly stated office cities.
-
 Website content:
 {corpus}"""
     )
@@ -539,10 +554,8 @@ def export_pdf(company, cd, sd):
     story.append(Paragraph(sd.get("score_reason", ""), S_BODY))
     story.append(HRFlowable(width="100%", thickness=1, color=ACCENT, spaceAfter=6))
 
-    section("Company Overview")
-    bullets(cd.get("overview", []))
-    section("Engineering Capabilities")
-    bullets(cd.get("engineering_capabilities", []))
+    section("Company Overview");          bullets(cd.get("overview", []))
+    section("Engineering Capabilities");  bullets(cd.get("engineering_capabilities", []))
 
     pts = cd.get("project_types", [])
     if pts:
@@ -565,25 +578,25 @@ def export_pdf(company, cd, sd):
             table_data.append([p.get("name",""), p.get("role",""), p.get("tier","")])
         t = Table(table_data, colWidths=[55*mm, 80*mm, 30*mm])
         t.setStyle(TableStyle([
-            ("BACKGROUND",    (0,0), (-1,0),  colors.HexColor("#f0ede6")),
-            ("TEXTCOLOR",     (0,0), (-1,0),  INK),
-            ("FONTNAME",      (0,0), (-1,0),  "Helvetica-Bold"),
-            ("FONTSIZE",      (0,0), (-1,0),  8),
-            ("FONTSIZE",      (0,1), (-1,-1), 9),
-            ("ROWBACKGROUNDS",(0,1), (-1,-1), [WHITE, LIGHT_BG]),
-            ("GRID",          (0,0), (-1,-1), 0.3, BORDER),
-            ("TOPPADDING",    (0,0), (-1,-1), 5),
-            ("BOTTOMPADDING", (0,0), (-1,-1), 5),
-            ("LEFTPADDING",   (0,0), (-1,-1), 6),
-            ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
+            ("BACKGROUND",    (0,0),(-1,0),  colors.HexColor("#f0ede6")),
+            ("TEXTCOLOR",     (0,0),(-1,0),  INK),
+            ("FONTNAME",      (0,0),(-1,0),  "Helvetica-Bold"),
+            ("FONTSIZE",      (0,0),(-1,0),  8),
+            ("FONTSIZE",      (0,1),(-1,-1), 9),
+            ("ROWBACKGROUNDS",(0,1),(-1,-1), [WHITE, LIGHT_BG]),
+            ("GRID",          (0,0),(-1,-1), 0.3, BORDER),
+            ("TOPPADDING",    (0,0),(-1,-1), 5),
+            ("BOTTOMPADDING", (0,0),(-1,-1), 5),
+            ("LEFTPADDING",   (0,0),(-1,-1), 6),
+            ("VALIGN",        (0,0),(-1,-1), "MIDDLE"),
         ]))
         story.append(t)
 
-    section("FEM / FEA Opportunities")
-    bullets(sd.get("fem_opportunities", []))
+    section("FEM / FEA Opportunities");   bullets(sd.get("fem_opportunities", []))
     section("Key Sales Signals")
     for sig in sd.get("hiring_signals", []) + sd.get("expansion_signals", []):
         story.append(Paragraph(f"▲  {sig}", S_BULLET))
+
     section("Sales Strategy")
     label_value("Entry Point", sd.get("entry_point", "—"))
     label_value("Value Positioning", sd.get("value_positioning", "—"))
@@ -678,7 +691,7 @@ else:
             del st.session_state["firecrawl_key"]
             st.rerun()
 
-# ── LAYOUT: SIDEBAR + MAIN ────────────────────────────────────────────────────
+# ── LAYOUT ────────────────────────────────────────────────────────────────────
 sidebar, main = st.columns([1, 4])
 
 # ── SIDEBAR: HISTORY ──────────────────────────────────────────────────────────
@@ -718,11 +731,10 @@ with sidebar:
                     st.rerun()
 
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-    st.markdown("<div style='font-family:JetBrains Mono,monospace;font-size:9px;color:#ccc;'>C:\\MIDAS_Intel\\</div>", unsafe_allow_html=True)
+    st.markdown("<div style='font-family:JetBrains Mono,monospace;font-size:9px;color:#ccc;'>Powered by Supabase</div>", unsafe_allow_html=True)
 
-# ── MAIN CONTENT ──────────────────────────────────────────────────────────────
+# ── MAIN ──────────────────────────────────────────────────────────────────────
 with main:
-    # ── SEARCH BAR ────────────────────────────────────────────────────────────
     c1, c2 = st.columns([5, 1])
     with c1:
         website = st.text_input("", placeholder="https://target-engineering-company.com", label_visibility="collapsed")
@@ -761,7 +773,7 @@ with main:
 
     st.divider()
 
-    # ── DECIDE WHAT TO SHOW ────────────────────────────────────────────────────
+    # ── STATE ─────────────────────────────────────────────────────────────────
     show_report   = False
     company_data  = {}
     sales_data    = {}
@@ -833,7 +845,7 @@ with main:
         st.session_state["active_domain"] = active_domain
         show_report = True
 
-    # ── RENDER REPORT ──────────────────────────────────────────────────────────
+    # ── REPORT ────────────────────────────────────────────────────────────────
     if show_report:
         score        = sales_data.get("overall_score", "Warm")
         score_reason = sales_data.get("score_reason", "")
@@ -872,7 +884,6 @@ with main:
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
         st.divider()
 
-        # ── TABS ──────────────────────────────────────────────────────────────
         t1, t2, t3, t4, t5, t6, t7 = st.tabs([
             "🏢  Company", "👥  People", "💡  FEM Opps",
             "🎯  Strategy", "📋  Vacancies", "📧  Email", "📤  Export & Notes"
@@ -893,15 +904,13 @@ with main:
                 st.markdown('<div class="sec-label">Project Types</div>', unsafe_allow_html=True)
                 pts = company_data.get("project_types", [])
                 if pts:
-                    pills = " ".join(f'<span class="pill-tag pill-red">{p}</span>' for p in pts)
-                    st.markdown(f"<div style='margin-bottom:16px;'>{pills}</div>", unsafe_allow_html=True)
+                    st.markdown(" ".join(f'<span class="pill-tag pill-red">{p}</span>' for p in pts), unsafe_allow_html=True)
                 else:
                     st.caption("None detected")
-                st.markdown('<div class="sec-label">Software & Tools Detected</div>', unsafe_allow_html=True)
+                st.markdown('<div class="sec-label" style="margin-top:16px;">Software & Tools Detected</div>', unsafe_allow_html=True)
                 sw = company_data.get("software_mentioned", [])
                 if sw:
-                    pills = " ".join(f'<span class="pill-tag pill-amber">{s}</span>' for s in sw)
-                    st.markdown(f"<div>{pills}</div>", unsafe_allow_html=True)
+                    st.markdown(" ".join(f'<span class="pill-tag pill-amber">{s}</span>' for s in sw), unsafe_allow_html=True)
                     st.caption("Existing tools — position MIDAS alongside or against these")
                 else:
                     st.success("No competing software detected — clean opportunity to introduce MIDAS as first FEA tool")
@@ -913,8 +922,7 @@ with main:
                 tier_order = ["Owner","Founder","Director","Principal","Senior","Engineer","Graduate","Technician","Other"]
                 grouped = {}
                 for p in people:
-                    tier = p.get("tier", "Other")
-                    grouped.setdefault(tier, []).append(p)
+                    grouped.setdefault(p.get("tier","Other"), []).append(p)
                 tier_icons = {"Owner":"★","Founder":"★","Director":"◈","Principal":"◈","Senior":"◆","Engineer":"◇","Graduate":"◇","Technician":"◇","Other":"·"}
                 for tier in tier_order:
                     tier_ppl = grouped.get(tier, [])
@@ -987,10 +995,10 @@ with main:
                     st.success(f"🎯 {fem_n} role(s) explicitly mention FEM/FEA — strong buying signal")
                 st.markdown('<div class="sec-label">Open Roles</div>', unsafe_allow_html=True)
                 for role in roles:
-                    title  = role.get("title", "Unknown role")
-                    skills = role.get("skills", [])
-                    fem    = role.get("fem_mentioned", False)
-                    fem_html = '<span style="font-family:JetBrains Mono,monospace;font-size:10px;color:#c8471e;background:rgba(200,71,30,0.08);border:1px solid rgba(200,71,30,0.3);padding:3px 9px;border-radius:20px;white-space:nowrap;">FEM MENTIONED</span>' if fem else ""
+                    title     = role.get("title", "Unknown role")
+                    skills    = role.get("skills", [])
+                    fem       = role.get("fem_mentioned", False)
+                    fem_html  = '<span style="font-family:JetBrains Mono,monospace;font-size:10px;color:#c8471e;background:rgba(200,71,30,0.08);border:1px solid rgba(200,71,30,0.3);padding:3px 9px;border-radius:20px;white-space:nowrap;">FEM MENTIONED</span>' if fem else ""
                     pills_html = "".join(f'<span style="font-family:JetBrains Mono,monospace;font-size:10px;padding:3px 10px;border:1px solid #e0ddd5;border-radius:20px;color:#666;background:#faf9f6;margin:2px;display:inline-block;">{s}</span>' for s in skills) if skills else '<span style="font-size:12px;color:#aaa;">No skills listed</span>'
                     st.markdown(
                         f'<div style="background:white;border:1px solid #e8e4dc;border-radius:8px;padding:16px 20px;margin-bottom:10px;">'
@@ -1002,7 +1010,7 @@ with main:
             else:
                 st.info("No relevant vacancies found on this website.")
 
-        # TAB 6 ── EMAIL DRAFT
+        # TAB 6 ── EMAIL
         with t6:
             st.markdown('<div class="sec-label">Cold Outreach Email</div>', unsafe_allow_html=True)
             st.markdown("<div style='background:white;border:1px solid #e8e4dc;border-radius:8px;padding:16px 20px;margin-bottom:16px;font-size:13px;color:#888;'>Generate a personalised cold email based on the company intelligence. Edit before sending.</div>", unsafe_allow_html=True)
@@ -1031,27 +1039,18 @@ with main:
 
                 st.markdown("<div style='font-family:JetBrains Mono,monospace;font-size:11px;color:#888;margin-bottom:4px;letter-spacing:0.1em;'>EMAIL BODY — edit below before copying</div>", unsafe_allow_html=True)
                 edited_email = st.text_area("", value=body, height=320, label_visibility="collapsed")
-
                 full_copy = f"Subject: {subject}\n\n{edited_email}" if subject else edited_email
-                st.download_button(
-                    "📋 Download as .txt",
-                    data=full_copy,
-                    file_name=f"MIDAS_Email_{company_name.replace(' ','_')}.txt",
-                    mime="text/plain"
-                )
+                st.download_button("📋 Download as .txt", data=full_copy, file_name=f"MIDAS_Email_{company_name.replace(' ','_')}.txt", mime="text/plain")
 
         # TAB 7 ── EXPORT & NOTES
         with t7:
             ea, eb = st.columns([1, 1])
-
             with ea:
                 st.markdown('<div class="sec-label">PDF Export</div>', unsafe_allow_html=True)
                 st.markdown("<div style='background:white;border:1px solid #e8e4dc;border-radius:8px;padding:20px 24px;margin-bottom:16px;'><div style='font-weight:600;font-size:15px;color:#111;margin-bottom:6px;'>PDF Sales Dossier</div><div style='font-size:13px;color:#888;'>Ready to print or share before a meeting.</div></div>", unsafe_allow_html=True)
                 pdf_bytes = export_pdf(company_name, company_data, sales_data)
                 fname = f"MIDAS_Intel_{company_name.replace(' ','_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
                 st.download_button("📥  Download PDF", data=pdf_bytes, file_name=fname, mime="application/pdf")
-
-
 
             with eb:
                 st.markdown('<div class="sec-label">Rep Notes</div>', unsafe_allow_html=True)
@@ -1071,4 +1070,4 @@ with main:
                 )
                 if st.button("💾 Save Notes", use_container_width=True):
                     save_note(active_domain, new_note)
-                    st.success("✓ Saved to C:\\MIDAS_Intel\\")
+                    st.success("✓ Saved to Supabase")

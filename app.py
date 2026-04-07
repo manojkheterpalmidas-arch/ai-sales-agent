@@ -84,7 +84,12 @@ def days_ago(date_str):
             return f"{diff} days ago"
     except:
         return "recently"
-        
+
+def delete_from_history(domain):
+    try:
+        supabase.table("midas_history").delete().eq("domain", domain).execute()
+    except Exception as e:
+        st.warning(f"Could not delete: {e}")
 # # ── AUTH ──────────────────────────────────────────────────────────────────────
 # if "authenticated" not in st.session_state:
 #     st.session_state.authenticated = False
@@ -749,6 +754,12 @@ with sidebar:
                 if st.button("↗", key=f"load_{i}", help=f"Load {name}"):
                     st.session_state["loaded_report"] = h
                     st.session_state["active_domain"] = h.get("domain", "")
+                    st.rerun()
+                if st.button("🗑", key=f"del_{i}", help=f"Delete {name}"):
+                    delete_from_history(h.get("domain", ""))
+                    if st.session_state.get("active_domain") == h.get("domain", ""):
+                        del st.session_state["loaded_report"]
+                        st.session_state["active_domain"] = ""
                     st.rerun()
 
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)

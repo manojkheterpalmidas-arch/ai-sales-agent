@@ -395,12 +395,18 @@ def get_firecrawl_credits():
         return None
 # ── TEXT PREP ─────────────────────────────────────────────────────────────────
 def build_corpus(pages):
-    # If single page site, give it much more room
+    import re as _re
     per_page_limit = 30000 if len(pages) == 1 else 15000
-    chunks = [
-        f"[PAGE: {p.get('url','')}]\n{p.get('markdown','').strip()[:per_page_limit]}"
-        for p in pages if p.get("markdown", "").strip()
-    ]
+    chunks = []
+    for p in pages:
+        md = p.get("markdown", "").strip()
+        if not md:
+            continue
+        # Strip image tags to reduce noise
+        md = _re.sub(r'!\[.*?\]\(.*?\)', '', md)
+        # Strip empty lines
+        md = _re.sub(r'\n{3,}', '\n\n', md)
+        chunks.append(f"[PAGE: {p.get('url','')}]\n{md[:per_page_limit]}")
     total_limit = 60000 if len(pages) == 1 else 40000
     return "\n\n---\n\n".join(chunks)[:total_limit]
 

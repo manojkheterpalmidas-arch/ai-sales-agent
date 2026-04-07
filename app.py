@@ -391,7 +391,7 @@ def get_firecrawl_credits():
 # ── TEXT PREP ─────────────────────────────────────────────────────────────────
 def build_corpus(pages):
     chunks = [
-        f"[PAGE: {p.get('url','')}]\n{p.get('markdown','').strip()[:5000]}"
+        f"[PAGE: {p.get('url','')}]\n{p.get('markdown','').strip()[:15000]}"
         for p in pages if p.get("markdown", "").strip()
     ]
     return "\n\n---\n\n".join(chunks)[:40000]

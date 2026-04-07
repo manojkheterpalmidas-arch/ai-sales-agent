@@ -268,14 +268,6 @@ a:hover { color: #a03518 !important; }
     font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; padding: 6px 16px; border-radius: 20px;
 }
 
-div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] button {
-    padding: 2px 4px !important;
-    font-size: 11px !important;
-    min-height: 24px !important;
-    height: 24px !important;
-    width: 28px !important;
-    border-radius: 4px !important;
-}
 </style>
 """, unsafe_allow_html=True)
 

@@ -898,10 +898,9 @@ with main:
 
         stat.caption("🔍 Crawling website with Firecrawl...")
         pages = firecrawl_crawl(website)
-        # TEMP DEBUG
-        if pages:
-            st.text_area("Raw markdown", pages[0].get("markdown", "")[:3000])
-            st.stop()
+        # TEMP 
+        if not pages or all(len(p.get("markdown", "")) < 500 for p in pages):
+            pages = direct_fetch(website)
 
         prog.progress(30)
 

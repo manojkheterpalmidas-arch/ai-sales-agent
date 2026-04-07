@@ -861,16 +861,19 @@ with sidebar:
                 </div>
                 """, unsafe_allow_html=True)
             with col_btn:
-                if st.button("↗", key=f"load_{i}", help=f"Load {name}"):
-                    st.session_state["loaded_report"] = h
-                    st.session_state["active_domain"] = h.get("domain", "")
-                    st.rerun()
-                if st.button("🗑", key=f"del_{i}", help=f"Delete {name}"):
-                    delete_from_history(h.get("domain", ""))
-                    if st.session_state.get("active_domain") == h.get("domain", ""):
-                        del st.session_state["loaded_report"]
-                        st.session_state["active_domain"] = ""
-                    st.rerun()
+                btn1, btn2 = st.columns(2)
+                with btn1:
+                    if st.button("↗", key=f"load_{i}", help=f"Load {name}"):
+                        st.session_state["loaded_report"] = h
+                        st.session_state["active_domain"] = h.get("domain", "")
+                        st.rerun()
+                with btn2:
+                    if st.button("🗑", key=f"del_{i}", help=f"Delete {name}"):
+                        delete_from_history(h.get("domain", ""))
+                        if st.session_state.get("active_domain") == h.get("domain", ""):
+                            del st.session_state["loaded_report"]
+                            st.session_state["active_domain"] = ""
+                        st.rerun()
 
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
     st.markdown("<div style='font-family:JetBrains Mono,monospace;font-size:9px;color:#ccc;'>Powered by Supabase</div>", unsafe_allow_html=True)

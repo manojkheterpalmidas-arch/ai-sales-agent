@@ -390,11 +390,14 @@ def get_firecrawl_credits():
         return None
 # ── TEXT PREP ─────────────────────────────────────────────────────────────────
 def build_corpus(pages):
+    # If single page site, give it much more room
+    per_page_limit = 30000 if len(pages) == 1 else 15000
     chunks = [
-        f"[PAGE: {p.get('url','')}]\n{p.get('markdown','').strip()[:15000]}"
+        f"[PAGE: {p.get('url','')}]\n{p.get('markdown','').strip()[:per_page_limit]}"
         for p in pages if p.get("markdown", "").strip()
     ]
-    return "\n\n---\n\n".join(chunks)[:40000]
+    total_limit = 60000 if len(pages) == 1 else 40000
+    return "\n\n---\n\n".join(chunks)[:total_limit]
 
 # ── AI ────────────────────────────────────────────────────────────────────────
 def ask_deepseek(system, user, max_tokens=2000, temperature=0.1):

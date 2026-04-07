@@ -898,9 +898,15 @@ with main:
 
         stat.caption("🔍 Crawling website with Firecrawl...")
         pages = firecrawl_crawl(website)
-        # TEMP 
         if not pages or all(len(p.get("markdown", "")) < 500 for p in pages):
             pages = direct_fetch(website)
+
+        # TEMP DEBUG
+        st.write(f"Total pages: {len(pages)}")
+        for p in pages:
+            st.write(f"URL: {p['url']} | Length: {len(p.get('markdown',''))}")
+            st.text_area(f"Content: {p['url']}", p.get("markdown","")[:2000], key=p['url'])
+        st.stop()
 
         prog.progress(30)
 

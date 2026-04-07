@@ -850,7 +850,7 @@ with sidebar:
             emoji = score_emoji(sc)
             cls   = score_cls(sc)
 
-            col_info, col_btn = st.columns([5, 1])
+            col_info, col_btn = st.columns([3, 1])
             with col_info:
                 st.markdown(f"""
                 <div style='padding:8px 0;border-bottom:1px solid #f0ede6;'>
@@ -862,7 +862,7 @@ with sidebar:
                 </div>
                 """, unsafe_allow_html=True)
             with col_btn:
-                btn1, btn2 = st.columns([1, 1])
+                btn1, btn2 = st.columns(2)
                 with btn1:
                     if st.button("↗", key=f"load_{i}", help=f"Load {name}"):
                         st.session_state["loaded_report"] = h

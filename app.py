@@ -870,11 +870,27 @@ with sidebar:
                         st.rerun()
                 with btn2:
                     if st.button("🗑", key=f"del_{i}", help=f"Delete {name}"):
-                        delete_from_history(h.get("domain", ""))
-                        if st.session_state.get("active_domain") == h.get("domain", ""):
-                            del st.session_state["loaded_report"]
-                            st.session_state["active_domain"] = ""
-                        st.rerun()
+                        st.session_state["confirm_delete"] = h.get("domain", "")
+
+if st.session_state.get("confirm_delete"):
+    domain_to_delete = st.session_state["confirm_delete"]
+    match = next((h for h in history if h.get("domain") == domain_to_delete), None)
+    company_to_delete = match.get("company", domain_to_delete) if match else domain_to_delete
+    st.warning(f"⚠ Delete **{company_to_delete}** from history? This cannot be undone.")
+    cd1, cd2 = st.columns(2)
+    with cd1:
+        if st.button("✅ Yes, Delete", use_container_width=True):
+            delete_from_history(domain_to_delete)
+            if st.session_state.get("active_domain") == domain_to_delete:
+                if "loaded_report" in st.session_state:
+                    del st.session_state["loaded_report"]
+                st.session_state["active_domain"] = ""
+            del st.session_state["confirm_delete"]
+            st.rerun()
+    with cd2:
+        if st.button("❌ Cancel", use_container_width=True):
+            del st.session_state["confirm_delete"]
+            st.rerun()
 
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
     st.markdown("<div style='font-family:JetBrains Mono,monospace;font-size:9px;color:#ccc;'>Powered by Supabase</div>", unsafe_allow_html=True)

@@ -267,16 +267,15 @@ a:hover { color: #a03518 !important; }
     display: inline-block; font-family: 'Syne', sans-serif; font-weight: 700;
     font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; padding: 6px 16px; border-radius: 20px;
 }
-/* Small sidebar history buttons */
-section[data-testid="stSidebar"] .stButton > button,
-[data-testid="column"] .stButton > button {
-    padding: 2px 8px !important;
-    font-size: 12px !important;
-    min-height: 28px !important;
-    height: 28px !important;
-    line-height: 1 !important;
-}
 
+div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] button {
+    padding: 2px 4px !important;
+    font-size: 11px !important;
+    min-height: 24px !important;
+    height: 24px !important;
+    width: 28px !important;
+    border-radius: 4px !important;
+}
 </style>
 """, unsafe_allow_html=True)
 

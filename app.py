@@ -362,7 +362,12 @@ def direct_fetch(url):
         for tag in soup(["script", "style", "noscript", "iframe"]):
             tag.decompose()
         text = soup.get_text(separator="\n", strip=True)
-        results = [{"url": url, "markdown": text}]
+
+        # Only add homepage if it has real content
+        if len(text) > 500:
+            results = [{"url": url, "markdown": text}]
+        else:
+            results = []
 
         # Also try to find and fetch subpages
         domain = urlparse(url).netloc

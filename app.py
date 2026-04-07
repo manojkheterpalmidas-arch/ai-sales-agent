@@ -348,6 +348,49 @@ def firecrawl_multi_scrape(base_url):
     return results
 
 
+def direct_fetch(url):
+    try:
+        from bs4 import BeautifulSoup
+        from urllib.parse import urljoin, urlparse
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept-Language": "en-GB,en;q=0.9",
+            "Cookie": "cookielawinfo-checkbox-necessary=yes; cookielawinfo-checkbox-analytics=yes; viewed_cookie_policy=yes; cookie_consent=accepted"
+        }
+        resp = requests.get(url, headers=headers, timeout=15)
+        soup = BeautifulSoup(resp.text, "html.parser")
+        for tag in soup(["script", "style", "noscript", "iframe"]):
+            tag.decompose()
+        text = soup.get_text(separator="\n", strip=True)
+        results = [{"url": url, "markdown": text}]
+
+        # Also try to find and fetch subpages
+        domain = urlparse(url).netloc
+        visited = {url}
+        for a in soup.find_all("a", href=True):
+            href = a["href"].strip()
+            full = urljoin(url, href)
+            parsed = urlparse(full)
+            if (parsed.netloc == domain and
+                "#" not in full and
+                full not in visited and
+                not any(full.endswith(ext) for ext in [".pdf",".jpg",".png",".zip"])):
+                visited.add(full)
+                try:
+                    sub = requests.get(full, headers=headers, timeout=10)
+                    sub_soup = BeautifulSoup(sub.text, "html.parser")
+                    for tag in sub_soup(["script", "style", "noscript", "iframe"]):
+                        tag.decompose()
+                    sub_text = sub_soup.get_text(separator="\n", strip=True)
+                    if len(sub_text) > 200:
+                        results.append({"url": full, "markdown": sub_text})
+                except:
+                    pass
+        return results
+    except:
+        return []
+
+
 def firecrawl_crawl(url, max_pages=30):
     try:
         resp = requests.post(
@@ -374,10 +417,15 @@ def firecrawl_crawl(url, max_pages=30):
                     {"url": p.get("metadata", {}).get("sourceURL", url), "markdown": p.get("markdown", "")}
                     for p in pages if p.get("markdown", "").strip()
                 ]
-                if results:
-                    return results
+                # Check if Firecrawl got blocked by cookie banner
+                real_results = [r for r in results if len(r.get("markdown", "")) > 500]
+                if real_results:
+                    return real_results
+                # Firecrawl got cookie-walled — fall back to direct fetch
+                return direct_fetch(url)
             if status == "failed":
                 break
+
         return firecrawl_multi_scrape(url)
     except:
         return firecrawl_multi_scrape(url)

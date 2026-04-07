@@ -956,6 +956,17 @@ with main:
         pages = firecrawl_crawl(website)
         if not pages or all(len(p.get("markdown", "")) < 500 for p in pages):
             pages = direct_fetch(website)
+        if not pages or all(len(p.get("markdown", "")) < 500 for p in pages):
+            st.warning("⚠ This site uses a JavaScript cookie wall that blocks automated crawling.")
+            manual_content = st.text_area(
+                "Paste the page content manually (copy all text from the website):",
+                height=200,
+                placeholder="Open the website, select all text (Ctrl+A), copy (Ctrl+C) and paste here..."
+            )
+            if manual_content:
+                pages = [{"url": website, "markdown": manual_content}]
+            else:
+                st.stop()
 
         # TEMP DEBUG
         st.write(f"Total pages: {len(pages)}")

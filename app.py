@@ -968,12 +968,7 @@ with main:
             else:
                 st.stop()
 
-        # TEMP DEBUG
-        st.write(f"Total pages: {len(pages)}")
-        for p in pages:
-            st.write(f"URL: {p['url']} | Length: {len(p.get('markdown',''))}")
-            st.text_area(f"Content: {p['url']}", p.get("markdown","")[:2000], key=p['url'])
-        st.stop()
+        
 
         prog.progress(30)
 

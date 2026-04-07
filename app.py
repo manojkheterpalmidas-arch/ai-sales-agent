@@ -399,6 +399,59 @@ def direct_fetch(url):
 
 def firecrawl_crawl(url, max_pages=30):
     try:
+        # First try scraping with actions to handle cookie popups
+        action_resp = requests.post(
+            "https://api.firecrawl.dev/v1/scrape",
+            headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}", "Content-Type": "application/json"},
+            json={
+                "url": url,
+                "formats": ["markdown"],
+                "actions": [
+                    {"type": "wait", "milliseconds": 2000},
+                    {"type": "click", "selector": "button[class*='accept'], button[id*='accept'], button[class*='agree'], button[class*='consent'], .cookie-accept, #cookie-accept, .accept-cookies"},
+                    {"type": "wait", "milliseconds": 1000}
+                ]
+            },
+            timeout=30
+        )
+        action_data = action_resp.json()
+        homepage_md = action_data.get("data", {}).get("markdown", "")
+
+        if homepage_md and len(homepage_md) > 500:
+            # Got homepage, now crawl the rest
+            results = [{"url": url, "markdown": homepage_md}]
+            try:
+                resp = requests.post(
+                    "https://api.firecrawl.dev/v1/crawl",
+                    headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}", "Content-Type": "application/json"},
+                    json={"url": url, "limit": max_pages, "scrapeOptions": {"formats": ["markdown"]}}, timeout=30
+                )
+                job_id = resp.json().get("id")
+                if job_id:
+                    import time
+                    for _ in range(36):
+                        time.sleep(5)
+                        poll = requests.get(
+                            f"https://api.firecrawl.dev/v1/crawl/{job_id}",
+                            headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}"},
+                            timeout=15
+                        ).json()
+                        status = poll.get("status")
+                        pages  = poll.get("data", [])
+                        if status == "completed" or (status == "scraping" and len(pages) >= max_pages - 2):
+                            extra = [
+                                {"url": p.get("metadata", {}).get("sourceURL", url), "markdown": p.get("markdown", "")}
+                                for p in pages if p.get("markdown", "").strip() and len(p.get("markdown","")) > 500
+                            ]
+                            results.extend(extra)
+                            break
+                        if status == "failed":
+                            break
+            except:
+                pass
+            return results
+
+        # Action scrape didn't work, try normal crawl
         resp = requests.post(
             "https://api.firecrawl.dev/v1/crawl",
             headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}", "Content-Type": "application/json"},
@@ -421,14 +474,11 @@ def firecrawl_crawl(url, max_pages=30):
             if status == "completed" or (status == "scraping" and len(pages) >= max_pages - 2):
                 results = [
                     {"url": p.get("metadata", {}).get("sourceURL", url), "markdown": p.get("markdown", "")}
-                    for p in pages if p.get("markdown", "").strip()
+                    for p in pages if p.get("markdown", "").strip() and len(p.get("markdown","")) > 500
                 ]
-                # Check if Firecrawl got blocked by cookie banner
-                real_results = [r for r in results if len(r.get("markdown", "")) > 500]
-                if real_results:
-                    return real_results
-                # Firecrawl got cookie-walled — fall back to direct fetch
-                return direct_fetch(url)
+                if results:
+                    return results
+                return firecrawl_multi_scrape(url)
             if status == "failed":
                 break
 

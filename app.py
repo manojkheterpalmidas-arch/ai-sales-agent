@@ -398,7 +398,7 @@ def direct_fetch(url):
         return []
 
 
-def firecrawl_crawl(url, max_pages=20):
+def firecrawl_crawl(url, max_pages=30):
     try:
         # First try scraping with actions to handle cookie popups
         action_resp = requests.post(

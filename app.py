@@ -701,24 +701,40 @@ def lookup_companies_house(company_name, locations=None):
         all_text = ""
         director_count = 0
 
-        # ── UK — Companies House ──────────────────────────────────────────
+        # ── UK — Companies House API ──────────────────────────────────────
         if is_uk or (not is_uk and not is_eu):
             try:
-                search_url = f"https://find-and-update.company-information.service.gov.uk/search?q={company_name.replace(' ', '+')}"
-                resp = requests.get(search_url, headers=headers, timeout=10)
-                soup = BeautifulSoup(resp.text, "html.parser")
-                result = soup.find("a", class_="govuk-link")
-                if result:
-                    company_url = "https://find-and-update.company-information.service.gov.uk" + result["href"]
-                    resp2 = requests.get(company_url, headers=headers, timeout=10)
-                    soup2 = BeautifulSoup(resp2.text, "html.parser")
-                    officers_url = company_url + "/officers"
-                    resp3 = requests.get(officers_url, headers=headers, timeout=10)
-                    soup3 = BeautifulSoup(resp3.text, "html.parser")
-                    text = soup2.get_text(separator="\n", strip=True)
-                    text += "\n\n" + soup3.get_text(separator="\n", strip=True)
-                    director_count = text.lower().count("director")
-                    all_text += f"[Companies House UK]\n{text[:3000]}"
+                # Search via Companies House API
+                search_resp = requests.get(
+                    f"https://api.company-information.service.gov.uk/search/companies?q={company_name.replace(' ', '+')}",
+                    auth=(st.secrets.get("COMPANIES_HOUSE_KEY", ""), ""),
+                    timeout=10
+                )
+                results = search_resp.json().get("items", [])
+                if results:
+                    company_number = results[0].get("company_number", "")
+                    # Get officers
+                    officers_resp = requests.get(
+                        f"https://api.company-information.service.gov.uk/company/{company_number}/officers",
+                        auth=(st.secrets.get("COMPANIES_HOUSE_KEY", ""), ""),
+                        timeout=10
+                    )
+                    officers = officers_resp.json().get("items", [])
+                    officer_text = "\n".join([
+                        f"{o.get('name', '')} — {o.get('officer_role', '')} (appointed {o.get('appointed_on', '')})"
+                        for o in officers if o.get('resigned_on') is None
+                    ])
+                    company_info = results[0]
+                    text = f"""Company: {company_info.get('title', '')}
+Status: {company_info.get('company_status', '')}
+Type: {company_info.get('company_type', '')}
+Incorporated: {company_info.get('date_of_creation', '')}
+Address: {company_info.get('registered_office_address', {}).get('address_line_1', '')}
+
+Active Officers:
+{officer_text}"""
+                    director_count = len([o for o in officers if 'director' in o.get('officer_role','').lower()])
+                    all_text += f"[Companies House UK]\n{text}"
             except:
                 pass
 

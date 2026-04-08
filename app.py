@@ -733,6 +733,7 @@ def analyze_sales(corpus, company_json):
   "recommended_products": ["CIVIL NX", "FEA NX"],
   "product_reason": "1-sentence explanation of why these specific products fit this company"
 }}
+Company data: {company_json}
 Website excerpt: {corpus[:8000]}"""
     )
 
@@ -1201,17 +1202,14 @@ with main:
         corpus = build_corpus(pages)
         prog.progress(50)
 
-        stat.caption("🧠 Analysing company profile and generating sales strategy in parallel...")
-        from concurrent.futures import ThreadPoolExecutor
-
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            future_company = executor.submit(analyze_company, corpus)
-            future_sales   = executor.submit(analyze_sales, corpus, "")
-            company_raw    = future_company.result()
-            sales_raw      = future_sales.result()
-
+        stat.caption("🧠 Extracting company profile...")
+        company_raw  = analyze_company(corpus)
         company_data = safe_json(company_raw)
-        sales_data   = safe_json(sales_raw)
+        prog.progress(75)
+
+        stat.caption("💡 Generating sales strategy...")
+        sales_raw  = analyze_sales(corpus, company_raw)
+        sales_data = safe_json(sales_raw)
         prog.progress(100)
 
         stat.empty()

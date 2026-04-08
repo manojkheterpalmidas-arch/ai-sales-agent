@@ -1217,19 +1217,20 @@ with main:
                     meta_html = "&nbsp;&nbsp;·&nbsp;&nbsp;".join(meta_parts)
         
                     st.markdown(f"""
-                    <div style="background:white;border:1px solid #e8e4dc;border-radius:8px;padding:16px 20px;margin-bottom:10px;">
-                        <div style="display:flex;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
-                            <div style="font-weight:600;font-size:15px;color:#111;">{name}</div>
-                            {fem_html}
-                            <span style="font-family:JetBrains Mono,monospace;font-size:10px;padding:3px 10px;
-                                 background:{bg};border:1px solid {border};border-radius:20px;color:{color};">
-                                {ptype}
-                            </span>
-                        </div>
-                        <div style="font-size:12px;color:#aaa;font-family:JetBrains Mono,monospace;margin-bottom:6px;">{meta_html}</div>
-                        <div style="font-size:13px;color:#555;line-height:1.6;">{description}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    card = (
+                        '<div style="background:white;border:1px solid #e8e4dc;border-radius:8px;padding:16px 20px;margin-bottom:10px;">'
+                        '<div style="display:flex;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">'
+                        f'<div style="font-weight:600;font-size:15px;color:#111;">{name}</div>'
+                        + fem_html +
+                        f'<span style="font-family:JetBrains Mono,monospace;font-size:10px;padding:3px 10px;'
+                        f'background:{bg};border:1px solid {border};border-radius:20px;color:{color};">'
+                        f'{ptype}</span>'
+                        '</div>'
+                        f'<div style="font-size:12px;color:#aaa;font-family:JetBrains Mono,monospace;margin-bottom:6px;">{meta_html}</div>'
+                        f'<div style="font-size:13px;color:#555;line-height:1.6;">{description}</div>'
+                        '</div>'
+                    )
+                    st.markdown(card, unsafe_allow_html=True)
             else:
                 st.info("No projects found. The site may not have a public portfolio or case studies section.")
 

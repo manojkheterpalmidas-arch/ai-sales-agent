@@ -3,15 +3,13 @@ from openai import OpenAI
 import requests
 import json
 import re
-from datetime import datetime
 from supabase import create_client, Client
 from datetime import datetime, timezone, timedelta
 
 def now_gmt2():
     return datetime.now(timezone.utc) + timedelta(hours=2)
 
-def now_gmt2_str():
-    return now_gmt2().strftime("%d %b %Y %H:%M")
+
 # ── SUPABASE CLIENT ───────────────────────────────────────────────────────────
 @st.cache_resource
 def get_supabase() -> Client:

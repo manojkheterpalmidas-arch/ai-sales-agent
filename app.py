@@ -1547,13 +1547,15 @@ with main:
         stat = st.empty()
 
         stat.caption("🔍 Crawling website with Firecrawl...")
-        pages = firecrawl_crawl(website)
-
-        # Use cached pages if previously fetched
+        
+        # Use cached pages if previously fetched via Google Cache button
         if st.session_state.get("use_cache") and st.session_state.get("cache_pages"):
             pages = st.session_state["cache_pages"]
             st.session_state["use_cache"] = False
             st.session_state["cache_pages"] = None
+            st.success("✅ Using Google Cache content")
+        else:
+            pages = firecrawl_crawl(website)
         
         if not pages or all(len(p.get("markdown", "")) < 500 for p in pages):
             st.warning("⚠ This site uses a JavaScript cookie wall that blocks automated crawling.")

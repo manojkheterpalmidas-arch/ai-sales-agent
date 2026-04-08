@@ -1039,6 +1039,10 @@ with main:
         company_data = safe_json(company_raw)
         prog.progress(75)
 
+        # TEMP DEBUG
+        st.text_area("Raw DeepSeek output", company_raw[:3000])
+        st.stop()
+
         stat.caption("💡 Generating sales strategy...")
         sales_raw  = analyze_sales(corpus, company_raw)
         sales_data = safe_json(sales_raw)

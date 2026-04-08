@@ -508,43 +508,85 @@ def search_people_via_google(company_name, domain):
     except:
         return ""
 
-def lookup_companies_house(company_name):
+def lookup_companies_house(company_name, locations=None):
     try:
         from bs4 import BeautifulSoup
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         }
-        # Search Companies House
-        search_url = f"https://find-and-update.company-information.service.gov.uk/search?q={company_name.replace(' ', '+')}"
-        resp = requests.get(search_url, headers=headers, timeout=10)
-        soup = BeautifulSoup(resp.text, "html.parser")
 
-        # Get first result link
-        result = soup.find("a", class_="govuk-link")
-        if not result:
-            return "", 0
+        # Detect country from locations
+        uk_keywords = ["london", "manchester", "birmingham", "leeds", "bristol", "edinburgh",
+                       "glasgow", "liverpool", "sheffield", "uk", "england", "scotland", "wales",
+                       "united kingdom", "britain"]
+        eu_keywords = ["germany", "france", "netherlands", "belgium", "spain", "italy", "poland",
+                       "czech", "sweden", "norway", "denmark", "switzerland", "austria", "serbia",
+                       "croatia", "romania", "portugal", "greece", "finland", "ireland"]
 
-        company_url = "https://find-and-update.company-information.service.gov.uk" + result["href"]
+        location_str = " ".join(locations or []).lower()
+        is_uk = any(kw in location_str for kw in uk_keywords)
+        is_eu = any(kw in location_str for kw in eu_keywords)
 
-        # Get company page
-        resp2 = requests.get(company_url, headers=headers, timeout=10)
-        soup2 = BeautifulSoup(resp2.text, "html.parser")
+        all_text = ""
+        director_count = 0
 
-        # Get officers page
-        officers_url = company_url + "/officers"
-        resp3 = requests.get(officers_url, headers=headers, timeout=10)
-        soup3 = BeautifulSoup(resp3.text, "html.parser")
+        # ── UK — Companies House ──────────────────────────────────────────
+        if is_uk or (not is_uk and not is_eu):
+            try:
+                search_url = f"https://find-and-update.company-information.service.gov.uk/search?q={company_name.replace(' ', '+')}"
+                resp = requests.get(search_url, headers=headers, timeout=10)
+                soup = BeautifulSoup(resp.text, "html.parser")
+                result = soup.find("a", class_="govuk-link")
+                if result:
+                    company_url = "https://find-and-update.company-information.service.gov.uk" + result["href"]
+                    resp2 = requests.get(company_url, headers=headers, timeout=10)
+                    soup2 = BeautifulSoup(resp2.text, "html.parser")
+                    officers_url = company_url + "/officers"
+                    resp3 = requests.get(officers_url, headers=headers, timeout=10)
+                    soup3 = BeautifulSoup(resp3.text, "html.parser")
+                    text = soup2.get_text(separator="\n", strip=True)
+                    text += "\n\n" + soup3.get_text(separator="\n", strip=True)
+                    director_count = text.lower().count("director")
+                    all_text += f"[Companies House UK]\n{text[:3000]}"
+            except:
+                pass
 
-        text = soup2.get_text(separator="\n", strip=True)
-        text += "\n\n" + soup3.get_text(separator="\n", strip=True)
+        # ── EU — OpenCorporates ───────────────────────────────────────────
+        if is_eu or (not is_uk and not is_eu):
+            try:
+                oc_url = f"https://opencorporates.com/companies?q={company_name.replace(' ', '+')}&utf8=✓"
+                resp = requests.get(oc_url, headers=headers, timeout=10)
+                soup = BeautifulSoup(resp.text, "html.parser")
+                result = soup.find("a", class_="company_search_result")
+                if result:
+                    company_url = "https://opencorporates.com" + result["href"]
+                    resp2 = requests.get(company_url, headers=headers, timeout=10)
+                    soup2 = BeautifulSoup(resp2.text, "html.parser")
+                    text = soup2.get_text(separator="\n", strip=True)
+                    director_count += text.lower().count("director")
+                    all_text += f"\n\n[OpenCorporates EU]\n{text[:3000]}"
+            except:
+                pass
 
-        # Count directors
-        director_count = text.lower().count("director")
+        # ── EU Tenders — TED Europa ───────────────────────────────────────
+        try:
+            ted_url = f"https://ted.europa.eu/en/search?scope=NOTICE&query={company_name.replace(' ', '+')}&sortColumn=ND&sortOrder=DESC"
+            resp = requests.get(ted_url, headers=headers, timeout=10)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for tag in soup(["script", "style"]):
+                tag.decompose()
+            text = soup.get_text(separator="\n", strip=True)
+            if len(text) > 200:
+                all_text += f"\n\n[EU Tenders TED]\n{text[:2000]}"
+        except:
+            pass
 
-        return text[:5000], director_count
+        return all_text[:6000], director_count
+
     except:
         return "", 0
+
 
 
 def lookup_linkedin_company(company_name):
@@ -1480,10 +1522,13 @@ with main:
         source_summary     = []
 
         stat.caption("📋 Checking Companies House...")
-        ch_text, ch_directors = lookup_companies_house(company_name_known)
+        ch_text, ch_directors = lookup_companies_house(
+            company_name_known,
+            locations=company_data.get("locations", [])
+        )
         if ch_text:
-            extra_corpus += f"\n\n[SOURCE: Companies House]\n{ch_text}"
-            source_summary.append(f"📋 Companies House — searched for directors and company registration details")
+            extra_corpus += f"\n\n[SOURCE: Company Registry]\n{ch_text}"
+            source_summary.append(f"📋 Company Registry — searched Companies House (UK), OpenCorporates (EU) and TED Tenders, {ch_directors} director entries found")
 
         stat.caption("💼 Checking LinkedIn...")
         li_text, li_employees = lookup_linkedin_company(company_name_known)

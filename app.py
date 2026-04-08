@@ -523,7 +523,7 @@ def lookup_companies_house(company_name, locations=None):
                     "uk", "england", "scotland", "wales", "northern ireland", "united kingdom", "britain"
                 ]
         
-                eu_keywords = [
+        eu_keywords = [
                     # Western Europe
                     "germany", "berlin", "munich", "hamburg", "frankfurt", "cologne", "düsseldorf",
                     "france", "paris", "lyon", "marseille", "toulouse", "bordeaux",

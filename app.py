@@ -1495,7 +1495,7 @@ with main:
         tp_text, tp_reviews = lookup_trustpilot(company_name_known, domain_known)
         if tp_text:
             extra_corpus += f"\n\n[SOURCE: Reviews]\n{tp_text}"
-           source_summary.append(f"⭐ Trustpilot & Google Reviews — {tp_reviews} review mentions found, added to pain point analysis")
+            source_summary.append(f"⭐ Trustpilot & Google Reviews — {tp_reviews} review mentions found, added to pain point analysis")
 
         stat.caption("🏗️ Checking planning applications...")
         pp_text, pp_projects = lookup_planning_portal(company_name_known)

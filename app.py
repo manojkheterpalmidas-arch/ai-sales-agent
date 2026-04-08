@@ -274,7 +274,14 @@ a:hover { color: #a03518 !important; }
     display: inline-block; font-family: 'Syne', sans-serif; font-weight: 700;
     font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; padding: 6px 16px; border-radius: 20px;
 }
-
+[data-testid="stFormSubmitButton"] > button > div > p,
+[data-testid="stFormSubmitButton"] button p,
+[data-testid="stFormSubmitButton"] button span,
+[data-testid="stFormSubmitButton"] button * {
+    color: white !important;
+    font-family: 'Syne', sans-serif !important;
+    font-weight: 700 !important;
+}
 </style>
 """, unsafe_allow_html=True)
 

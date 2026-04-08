@@ -1216,7 +1216,6 @@ with main:
                         meta_parts.append(f"👤 {client}")
                     meta_html = "&nbsp;&nbsp;·&nbsp;&nbsp;".join(meta_parts)
         
-                    st.markdown(f"""
                     card = (
                         '<div style="background:white;border:1px solid #e8e4dc;border-radius:8px;padding:16px 20px;margin-bottom:10px;">'
                         '<div style="display:flex;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">'

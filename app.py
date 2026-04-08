@@ -1943,11 +1943,9 @@ with main:
                 st.session_state["generated_email"] = ""
                 st.session_state["email_domain"] = current_domain
 
-            with st.form("email_form"):
-                submitted = st.form_submit_button("✉ Generate Email Draft")
-            if submitted:
-                with st.spinner("Writing email..."):
-                    st.session_state["generated_email"] = generate_email(company_data, sales_data)
+            if st.button("✉ Generate Email Draft", key="gen_email_btn"):
+                st.session_state["generated_email"] = generate_email(company_data, sales_data)
+                st.rerun()
 
             if st.session_state["generated_email"]:
                 lines = st.session_state["generated_email"].strip().split("\n")

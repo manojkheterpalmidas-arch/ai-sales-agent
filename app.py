@@ -465,9 +465,16 @@ def fetch_google_cache(url):
 
 def scrape_with_scrapingbee(url):
     try:
-        api_key = st.secrets.get("SCRAPINGBEE_KEY", "")
+        try:
+            api_key = st.secrets["SCRAPINGBEE_KEY"]
+            st.write(f"ScrapingBee key found: {api_key[:8]}...")
+        except:
+            api_key = ""
+            st.write("ScrapingBee key NOT found in secrets")
+
         if not api_key:
             return []
+
         resp = requests.get(
             "https://app.scrapingbee.com/api/v1/",
             params={

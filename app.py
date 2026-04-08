@@ -467,30 +467,84 @@ def scrape_with_scrapingbee(url):
     try:
         try:
             api_key = st.secrets["SCRAPINGBEE_KEY"]
-            
         except:
-            api_key = ""
-            
+            return []
 
         if not api_key:
             return []
 
-        resp = requests.get(
-            "https://app.scrapingbee.com/api/v1/",
-            params={
-                "api_key": api_key,
-                "url": url,
-                "render_js": "true",
-                "wait": "2000",
-            },
-            timeout=30
-        )
         from bs4 import BeautifulSoup
-        soup = BeautifulSoup(resp.text, "html.parser")
-        for tag in soup(["script", "style", "noscript"]):
-            tag.decompose()
-        text = soup.get_text(separator="\n", strip=True)
-        return [{"url": url, "markdown": text}] if len(text) > 500 else []
+        from urllib.parse import urljoin, urlparse
+
+        headers_sb = {
+            "api_key": api_key,
+            "render_js": "true",
+            "wait": "2000",
+        }
+
+        results = []
+        visited = set()
+
+        def sb_scrape(target_url):
+            if target_url in visited:
+                return None
+            visited.add(target_url)
+            try:
+                resp = requests.get(
+                    "https://app.scrapingbee.com/api/v1/",
+                    params={**headers_sb, "url": target_url},
+                    timeout=30
+                )
+                soup = BeautifulSoup(resp.text, "html.parser")
+                for tag in soup(["script", "style", "noscript"]):
+                    tag.decompose()
+                text = soup.get_text(separator="\n", strip=True)
+                if len(text) > 500:
+                    return {"url": target_url, "markdown": text}, soup
+            except:
+                pass
+            return None, None
+
+        # Scrape homepage
+        home_result, home_soup = sb_scrape(url)
+        if not home_result:
+            return []
+        results.append(home_result)
+
+        # Find and scrape priority subpages
+        if home_soup:
+            domain = urlparse(url).netloc
+            priority_keywords = ["team","people","about","projects","services","careers","who-we-are","our-work"]
+            links = []
+            for a in home_soup.find_all("a", href=True):
+                href = a["href"].strip()
+                full = urljoin(url, href)
+                parsed = urlparse(full)
+                if (parsed.netloc == domain and
+                    "#" not in full and
+                    full != url and
+                    full not in visited and
+                    not any(full.endswith(ext) for ext in [".pdf",".jpg",".png",".zip"])):
+                    links.append(full)
+
+            # Sort by priority
+            def priority_score(link):
+                lower = link.lower()
+                for i, kw in enumerate(priority_keywords):
+                    if kw in lower:
+                        return i
+                return 999
+
+            sorted_links = sorted(set(links), key=priority_score)
+
+            # Scrape up to 5 priority subpages
+            for link in sorted_links[:5]:
+                result, _ = sb_scrape(link)
+                if result:
+                    results.append(result)
+
+        return results
+
     except:
         return []
 

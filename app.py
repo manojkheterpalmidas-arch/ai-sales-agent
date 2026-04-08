@@ -740,8 +740,7 @@ def analyze_sales(corpus, company_json):
 }}
 Company data: {company_json}
 Website excerpt: {corpus[:4000]}""",
-        max_tokens=4000,
-        api_key=api_key
+        max_tokens=4000
     )
 
 

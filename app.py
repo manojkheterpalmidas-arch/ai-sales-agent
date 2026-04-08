@@ -502,18 +502,15 @@ def get_firecrawl_credits():
 def build_corpus(pages):
     import re as _re
     chunks = []
-    for idx, p in enumerate(pages):
+    for p in pages:
         md = p.get("markdown", "").strip()
         if not md:
             continue
         # Strip image tags to reduce noise
         md = _re.sub(r'!\[.*?\]\(.*?\)', '', md)
         md = _re.sub(r'\n{3,}', '\n\n', md)
-        # Homepage gets less space, subpages get more
-        limit = 2000 if idx == 0 and len(pages) > 1 else 8000
-        chunks.append(f"[PAGE: {p.get('url','')}]\n{md[:limit]}")
-    total_limit = 60000 if len(pages) == 1 else 80000
-    return "\n\n---\n\n".join(chunks)[:total_limit]
+        chunks.append(f"[PAGE: {p.get('url','')}]\n{md[:15000]}")
+    return "\n\n---\n\n".join(chunks)[:40000]
 
 # ── AI ────────────────────────────────────────────────────────────────────────
 def ask_deepseek(system, user, max_tokens=2000, temperature=0.1):

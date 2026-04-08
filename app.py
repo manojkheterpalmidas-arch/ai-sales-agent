@@ -1061,6 +1061,7 @@ Extract ONLY engineering and technical staff — directors, engineers, technicia
 EXCLUDE: blog authors, contributing authors, lead authors, writers, journalists, or anyone whose role relates to writing/publishing rather than engineering.
 Only include people who work AT the company as engineers or technical staff.
 For locations: ONLY explicitly stated office cities.
+For employee_count: check ALL sources including Glassdoor, LinkedIn, Companies House and the website. Glassdoor often shows ranges like "51-200 employees" — use this if the website doesn't state it explicitly.
 For projects: extract ALL completed or ongoing projects mentioned anywhere on the site — project pages, case studies, portfolio sections, news. Include project name, type, location if stated, client if stated, and a one sentence description. Set fem_relevant to true if the project involved structural analysis, FEA, FEM, complex geometry, bridges, or heavy civil engineering.
 Website content:
 {corpus}""",
@@ -1798,8 +1799,7 @@ with main:
         gd_text, gd_reviews = lookup_glassdoor(company_name_known, domain_known)
         if gd_text:
             extra_corpus += f"\n\n[SOURCE: Glassdoor & Indeed Reviews]\n{gd_text}"
-            source_summary.append(f"⭐ Glassdoor & Indeed — {gd_reviews} employee review snippets found, added to software pain point analysis")
-
+            source_summary.append(f"⭐ Glassdoor & Indeed — {gd_reviews} employee review snippets found, added to full analysis")
         stat.caption("🏗️ Checking planning applications...")
         pp_text, pp_projects = lookup_planning_portal(company_name_known)
         if pp_text:

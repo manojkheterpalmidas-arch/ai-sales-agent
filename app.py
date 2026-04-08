@@ -514,7 +514,8 @@ def build_corpus(pages):
 
 # ── AI ────────────────────────────────────────────────────────────────────────
 def ask_deepseek(system, user, max_tokens=2000, temperature=0.1):
-    resp = deepseek.chat.completions.create(
+    client = OpenAI(api_key=st.secrets["DEEPSEEK_API_KEY"], base_url="https://api.deepseek.com")
+    resp = client.chat.completions.create(
         model="deepseek-chat",
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
         temperature=temperature, max_tokens=max_tokens

@@ -524,7 +524,7 @@ def ask_deepseek(system, user, max_tokens=2000, temperature=0.1):
 
 def analyze_company(corpus):
     return ask_deepseek(
-        "You are a B2B sales analyst for MIDAS IT (FEA/FEM software). Extract facts only. Respond in pure JSON, no markdown. Always respond in English regardless of the language of the website content.",
+        "You are a B2B sales analyst for MIDAS IT (FEA/FEM software). Extract facts only. Respond in pure JSON, no markdown. CRITICAL: You MUST translate ALL extracted content into English. Even if the website is in Serbian, French, German, or any other language, ALL values in your JSON response must be written in English. Do not copy foreign language text into the JSON.",
         f"""Return ONLY valid JSON:
 {{
   "company_name": "string",
@@ -551,7 +551,7 @@ For locations: ONLY explicitly stated office cities.
 For projects: extract ALL completed or ongoing projects mentioned anywhere on the site — project pages, case studies, portfolio sections, news. Include project name, type, location if stated, client if stated, and a one sentence description. Set fem_relevant to true if the project involved structural analysis, FEA, FEM, complex geometry, bridges, or heavy civil engineering.
 Website content:
 {corpus}""",
-        max_tokens=6000
+        max_tokens=8000
     )
 
 

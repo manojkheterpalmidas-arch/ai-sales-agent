@@ -1595,20 +1595,20 @@ with main:
         if not pages or all(len(p.get("markdown", "")) < 500 for p in pages):
             st.warning("⚠ This site uses a JavaScript cookie wall that blocks automated crawling.")
 
-            # Step 1 — Try Google Cache automatically
-            stat.caption("🔄 Trying Google Cache...")
-            cache_pages = fetch_google_cache(website)
-            if cache_pages and any(len(p.get("markdown","")) > 500 for p in cache_pages):
-                st.success("✅ Retrieved content via Google Cache")
-                pages = cache_pages
+            # Step 1 — Try ScrapingBee first (real browser, most reliable)
+            stat.caption("🌐 Trying ScrapingBee browser renderer...")
+            sb_pages = scrape_with_scrapingbee(website)
+            if sb_pages:
+                st.success("✅ Retrieved content via ScrapingBee")
+                pages = sb_pages
 
-            # Step 2 — Try ScrapingBee if Google Cache failed
+            # Step 2 — Try Google Cache if ScrapingBee failed
             if not pages or all(len(p.get("markdown", "")) < 500 for p in pages):
-                stat.caption("🌐 Trying ScrapingBee browser renderer...")
-                sb_pages = scrape_with_scrapingbee(website)
-                if sb_pages:
-                    st.success("✅ Retrieved content via ScrapingBee")
-                    pages = sb_pages
+                stat.caption("🔄 Trying Google Cache...")
+                cache_pages = fetch_google_cache(website)
+                if cache_pages and any(len(p.get("markdown","")) > 500 for p in cache_pages):
+                    st.success("✅ Retrieved content via Google Cache")
+                    pages = cache_pages
 
             # Step 3 — Manual paste if everything failed
             if not pages or all(len(p.get("markdown", "")) < 500 for p in pages):

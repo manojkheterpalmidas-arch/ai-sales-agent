@@ -5,10 +5,7 @@ import json
 import re
 from datetime import datetime
 from supabase import create_client, Client
-from datetime import datetime, timezone, timedelta
 
-def now_gmt2():
-    return datetime.now(timezone.utc) + timedelta(hours=2)
 
 # ── SUPABASE CLIENT ───────────────────────────────────────────────────────────
 @st.cache_resource
@@ -61,7 +58,7 @@ def save_note(domain, note):
         supabase.table("midas_notes").upsert({
             "domain":    domain,
             "note_text": note,
-            "updated":   datetime.now().strftime("%d %b %Y %H:%M")
+            "updated":   (datetime.now() + __import__('datetime').timedelta(hours=2)).strftime("%d %b %Y %H:%M")
         }, on_conflict="domain").execute()
     except Exception as e:
         st.warning(f"Could not save note: {e}")
@@ -858,7 +855,7 @@ def export_pdf(company, cd, sd):
     locs      = ", ".join(cd.get("locations", [])) or "—"
     emp       = cd.get("employee_count") or "—"
     conf      = cd.get("confidence", "—")
-    generated = datetime.now().strftime("%d %b %Y %H:%M")
+    generated = (datetime.now() + __import__('datetime').timedelta(hours=2)).strftime("%d %b %Y %H:%M")
 
     story.append(Paragraph(company, S_TITLE))
     story.append(Paragraph(f"{score.upper()} LEAD", S_SCORE))
@@ -1232,7 +1229,7 @@ with main:
             "domain":       active_domain,
             "company":      company_name,
             "score":        sales_data.get("overall_score", "Cold"),
-            "date":         datetime.now().strftime("%d %b %Y %H:%M"),
+            "date":         (datetime.now() + __import__('datetime').timedelta(hours=2)).strftime("%d %b %Y %H:%M"),
             "pages_count":  pages_count,
             "company_data": company_data,
             "sales_data":   sales_data,

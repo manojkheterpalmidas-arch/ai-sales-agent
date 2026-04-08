@@ -760,76 +760,6 @@ Active Officers:
 
 
 
-def lookup_linkedin_company(company_name):
-    try:
-        import re
-        all_text = ""
-
-        queries = [
-            f"site:linkedin.com/company \"{company_name}\" engineers employees",
-            f"linkedin \"{company_name}\" company employees engineers",
-        ]
-
-        for query in queries:
-            text = smart_search(query)
-            if text:
-                all_text += "\n\n" + text
-            time.sleep(0.5)
-
-        employee_signal = 0
-        matches = re.findall(r'(\d+[\,\d]*)\s*employees', all_text.lower())
-        if matches:
-            employee_signal = matches[0].replace(",", "")
-
-        return all_text[:3000], employee_signal
-    except:
-        return "", 0
-
-def lookup_glassdoor(company_name, domain):
-    try:
-        base_name = domain.replace("www.", "").split(".")[0]
-        all_text = ""
-        review_count = 0
-
-        queries = [
-            f"glassdoor \"{company_name}\" reviews engineers software tools employees",
-            f"glassdoor {base_name} employee count size rating",
-            f"indeed \"{company_name}\" reviews engineer software tools",
-            f"\"{company_name}\" employees size headquarters glassdoor OR indeed",
-            f"\"{company_name}\" employees size headquarters glassdoor OR linkedin OR indeed",
-        ]
-
-        for query in queries:
-            text = smart_search(query)
-            if text:
-                all_text += "\n\n" + text
-                review_count += text.lower().count("review")
-            time.sleep(0.5)
-
-        return all_text[:5000], review_count
-    except:
-        return "", 0
-
-
-def lookup_planning_portal(company_name):
-    try:
-        all_text = ""
-
-        queries = [
-            f"\"{company_name}\" planning application structural engineer site:gov.uk OR site:planningportal.co.uk",
-            f"\"{company_name}\" planning application structural",
-        ]
-
-        for query in queries:
-            text = smart_search(query)
-            if text:
-                all_text += "\n\n" + text
-            time.sleep(0.5)
-
-        project_count = all_text.lower().count("planning")
-        return all_text[:3000], project_count
-    except:
-        return "", 0
 
 def firecrawl_crawl(url, max_pages=30):
     try:
@@ -1715,23 +1645,8 @@ with main:
             extra_corpus += f"\n\n[SOURCE: Company Registry]\n{ch_text}"
             source_summary.append(f"📋 Company Registry — searched Companies House (UK), OpenCorporates (EU) and TED Tenders, {ch_directors} director entries found")
 
-        stat.caption("💼 Checking LinkedIn...")
-        li_text, li_employees = lookup_linkedin_company(company_name_known)
-        if li_text:
-            extra_corpus += f"\n\n[SOURCE: LinkedIn]\n{li_text}"
-            source_summary.append(f"💼 LinkedIn — searched company page for employee count and signals ({li_employees} employees)" if li_employees else "💼 LinkedIn — searched company page, employee count not found publicly")
-
-        stat.caption("⭐ Checking Glassdoor & Indeed...")
-        gd_text, gd_reviews = lookup_glassdoor(company_name_known, domain_known)
-        if gd_text:
-            extra_corpus += f"\n\n[SOURCE: Glassdoor & Indeed Reviews]\n{gd_text}"
-        source_summary.append(f"⭐ Glassdoor & Indeed — {gd_reviews} employee review snippets found, added to full analysis")
-        stat.caption("🏗️ Checking planning applications...")
-        pp_text, pp_projects = lookup_planning_portal(company_name_known)
-        if pp_text:
-            extra_corpus += f"\n\n[SOURCE: Planning Portal]\n{pp_text}"
-            source_summary.append(f"🏗️ Planning Portal — {pp_projects} planning application mentions found, added to projects")
-
+        
+    
         # If no people found, try Google/LinkedIn people search
         if len(company_data.get("people", [])) == 0:
             stat.caption("👥 Searching for people via Google & LinkedIn...")

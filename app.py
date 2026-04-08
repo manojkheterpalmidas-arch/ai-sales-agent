@@ -1042,11 +1042,6 @@ with main:
         corpus = build_corpus(pages)
         prog.progress(50)
 
-         # TEMP DEBUG
-        st.text_area("Corpus preview", corpus[:3000])
-        st.write(f"Corpus length: {len(corpus)}")
-        st.stop()
-
         stat.caption("🧠 Extracting company profile...")
         company_raw  = analyze_company(corpus)
         company_data = safe_json(company_raw)

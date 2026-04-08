@@ -810,30 +810,68 @@ def lookup_linkedin_company(company_name):
         return "", 0
 
 
-def lookup_trustpilot(company_name, domain):
+def lookup_glassdoor(company_name, domain):
     try:
         from bs4 import BeautifulSoup
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         }
-        # Try Trustpilot directly
-        trustpilot_url = f"https://www.trustpilot.com/review/{domain}"
-        resp = requests.get(trustpilot_url, headers=headers, timeout=10)
-        soup = BeautifulSoup(resp.text, "html.parser")
-        text = soup.get_text(separator="\n", strip=True)
 
-        # Also search Google reviews
-        google_url = f"https://www.google.com/search?q=\"{company_name}\"+reviews+OR+testimonials+engineers"
-        resp2 = requests.get(google_url, headers=headers, timeout=10)
-        soup2 = BeautifulSoup(resp2.text, "html.parser")
-        for tag in soup2(["script", "style"]):
-            tag.decompose()
-        text += "\n\n" + soup2.get_text(separator="\n", strip=True)
+        all_text = ""
+        review_count = 0
 
-        review_count = text.lower().count("review")
+        # Search 1 — Glassdoor via Google
+        try:
+            google_url = f"https://www.google.com/search?q=site:glassdoor.com+\"{company_name}\"+reviews+engineers"
+            resp = requests.get(google_url, headers=headers, timeout=10)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for tag in soup(["script", "style"]):
+                tag.decompose()
+            text = soup.get_text(separator="\n", strip=True)
+            all_text += text
+            review_count += text.lower().count("review")
+        except:
+            pass
 
-        return text[:3000], review_count
+        # Search 2 — Glassdoor via DuckDuckGo
+        try:
+            ddg_url = f"https://html.duckduckgo.com/html/?q=site:glassdoor.com+\"{company_name}\"+engineer+OR+software+OR+tools"
+            resp = requests.get(ddg_url, headers=headers, timeout=10)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            results = soup.find_all("a", class_="result__snippet")
+            text = "\n".join([r.get_text() for r in results])
+            all_text += "\n\n" + text
+            review_count += len(results)
+        except:
+            pass
+
+        # Search 3 — Glassdoor company overview
+        try:
+            overview_url = f"https://www.google.com/search?q=glassdoor+\"{company_name}\"+employees+rating+software+tools+engineering"
+            resp = requests.get(overview_url, headers=headers, timeout=10)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for tag in soup(["script", "style"]):
+                tag.decompose()
+            text = soup.get_text(separator="\n", strip=True)
+            all_text += "\n\n" + text
+        except:
+            pass
+
+        # Search 4 — Indeed as backup (also has company reviews and team size)
+        try:
+            indeed_url = f"https://html.duckduckgo.com/html/?q=site:indeed.com+\"{company_name}\"+reviews+engineers+software"
+            resp = requests.get(indeed_url, headers=headers, timeout=10)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            results = soup.find_all("a", class_="result__snippet")
+            text = "\n".join([r.get_text() for r in results])
+            all_text += "\n\n" + text
+            review_count += len(results)
+        except:
+            pass
+
+        return all_text[:4000], review_count
+
     except:
         return "", 0
 
@@ -1756,11 +1794,11 @@ with main:
             extra_corpus += f"\n\n[SOURCE: LinkedIn]\n{li_text}"
             source_summary.append(f"💼 LinkedIn — searched company page for employee count and signals ({li_employees} employees)" if li_employees else "💼 LinkedIn — searched company page, employee count not found publicly")
 
-        stat.caption("⭐ Checking reviews...")
-        tp_text, tp_reviews = lookup_trustpilot(company_name_known, domain_known)
-        if tp_text:
-            extra_corpus += f"\n\n[SOURCE: Reviews]\n{tp_text}"
-            source_summary.append(f"⭐ Trustpilot & Google Reviews — {tp_reviews} review mentions found, added to pain point analysis")
+        stat.caption("⭐ Checking Glassdoor & Indeed...")
+        gd_text, gd_reviews = lookup_glassdoor(company_name_known, domain_known)
+        if gd_text:
+            extra_corpus += f"\n\n[SOURCE: Glassdoor & Indeed Reviews]\n{gd_text}"
+            source_summary.append(f"⭐ Glassdoor & Indeed — {gd_reviews} employee review snippets found, added to software pain point analysis")
 
         stat.caption("🏗️ Checking planning applications...")
         pp_text, pp_projects = lookup_planning_portal(company_name_known)

@@ -557,7 +557,7 @@ For locations: ONLY explicitly stated office cities.
 For projects: extract ALL completed or ongoing projects mentioned anywhere on the site — project pages, case studies, portfolio sections, news. Include project name, type, location if stated, client if stated, and a one sentence description. Set fem_relevant to true if the project involved structural analysis, FEA, FEM, complex geometry, bridges, or heavy civil engineering.
 Website content:
 {corpus}""",
-        max_tokens=8000
+        max_tokens=8000,
         api_key=api_key
     )
 
@@ -741,7 +741,7 @@ def analyze_sales(corpus, company_json):
 }}
 Company data: {company_json}
 Website excerpt: {corpus[:4000]}""",
-        max_tokens=4000
+        max_tokens=4000,
         api_key=api_key
     )
 

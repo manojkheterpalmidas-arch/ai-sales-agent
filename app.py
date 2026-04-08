@@ -503,7 +503,12 @@ def build_corpus(pages):
     import re as _re
     per_page_limit = 30000 if len(pages) == 1 else 15000
     chunks = []
-    for p in pages:
+    for idx, p in enumerate(pages):
+        # Give homepage less space so people/project pages get more room
+        if idx == 0 and len(pages) > 1:
+            per_page_limit = 3000
+        else:
+            per_page_limit = 8000
         md = p.get("markdown", "").strip()
         if not md:
             continue
@@ -512,7 +517,7 @@ def build_corpus(pages):
         # Strip empty lines
         md = _re.sub(r'\n{3,}', '\n\n', md)
         chunks.append(f"[PAGE: {p.get('url','')}]\n{md[:per_page_limit]}")
-    total_limit = 60000 if len(pages) == 1 else 40000
+    total_limit = 60000 if len(pages) == 1 else 80000
     return "\n\n---\n\n".join(chunks)[:total_limit]
 
 # ── AI ────────────────────────────────────────────────────────────────────────

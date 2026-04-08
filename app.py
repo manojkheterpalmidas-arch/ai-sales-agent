@@ -1647,13 +1647,13 @@ with main:
 
         
     
-        # If no people found, try Google/LinkedIn people search
-        if len(company_data.get("people", [])) == 0:
+        # Only search for people if genuinely none found from website
+        if len(company_data.get("people", [])) == 0 and len(corpus) > 1000:
             stat.caption("👥 Searching for people via Google & LinkedIn...")
             google_text = search_people_via_google(company_name_known, domain_known)
             if google_text:
                 extra_corpus += f"\n\n[SOURCE: People Search]\n{google_text}"
-            source_summary.append(f"👥 People Search — searched LinkedIn profiles and Google for named engineers at this company")
+                source_summary.append("👥 People Search — searched LinkedIn profiles and Google for named engineers at this company")
 
         # Re-analyse with enriched corpus if extra data found
         if extra_corpus:

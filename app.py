@@ -981,7 +981,7 @@ def analyze_company(corpus):
   "confidence": "High|Medium|Low",
   "confidence_reason": "One sentence explaining why confidence is High, Medium or Low based on data quality and completeness of the website"
 }}
-Extract ALL people. For locations: ONLY explicitly stated office cities.
+Extract ALL people. "For locations: list ALL explicitly stated office cities. Put the HEADQUARTERS or primary UK office first.",
 Extract ONLY engineering and technical staff — directors, engineers, technicians, consultants.
 EXCLUDE: blog authors, contributing authors, lead authors, writers, journalists, or anyone whose role relates to writing/publishing rather than engineering.
 Only include people who work AT the company as engineers or technical staff.

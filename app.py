@@ -607,8 +607,15 @@ Return plain text only.""",
 # ── HELPERS ───────────────────────────────────────────────────────────────────
 def safe_json(text):
     try:
-        return json.loads(re.sub(r"```json|```", "", text).strip())
+        cleaned = re.sub(r"```json|```", "", text).strip()
+        return json.loads(cleaned)
     except:
+        try:
+            match = re.search(r'\{.*\}', text, re.DOTALL)
+            if match:
+                return json.loads(match.group())
+        except:
+            pass
         return {}
 
 def ini(name):
@@ -1039,9 +1046,6 @@ with main:
         company_data = safe_json(company_raw)
         prog.progress(75)
 
-        # TEMP DEBUG
-        st.text_area("Raw DeepSeek output", company_raw[:3000])
-        st.stop()
 
         stat.caption("💡 Generating sales strategy...")
         sales_raw  = analyze_sales(corpus, company_raw)

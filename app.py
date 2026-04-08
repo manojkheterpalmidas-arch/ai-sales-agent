@@ -733,8 +733,8 @@ def analyze_sales(corpus, company_json):
   "opening_line": "One strong personalised opening line referencing something specific about their work",
   "overall_score": "Hot|Warm|Cold",
   "score_reason": "2-3 sentence detailed reason for the score based on their specific context",
-  "recommended_products": ["CIVIL NX", "FEA NX"],
-  "product_reason": "2-3 sentence explanation of exactly why these specific MIDAS products fit this company based on their project types and engineering capabilities"
+  "recommended_products": ["list the specific MIDAS products that fit this company from: CIVIL NX, GEN NX, FEA NX, GTS NX"],
+  "product_reason": "3-4 sentence explanation of exactly why these specific MIDAS products fit this company based on their project types and engineering capabilities"
 }}
 Company data: {company_json}
 Website excerpt: {corpus[:4000]}""",

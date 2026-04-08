@@ -1483,25 +1483,25 @@ with main:
         ch_text, ch_directors = lookup_companies_house(company_name_known)
         if ch_text:
             extra_corpus += f"\n\n[SOURCE: Companies House]\n{ch_text}"
-            source_summary.append(f"📋 Companies House — {ch_directors} director entries found")
+            source_summary.append(f"📋 Companies House — searched for directors and company registration details")
 
         stat.caption("💼 Checking LinkedIn...")
         li_text, li_employees = lookup_linkedin_company(company_name_known)
         if li_text:
             extra_corpus += f"\n\n[SOURCE: LinkedIn]\n{li_text}"
-            source_summary.append(f"💼 LinkedIn — {li_employees} employees signal found" if li_employees else "💼 LinkedIn — company page found")
+            source_summary.append(f"💼 LinkedIn — searched company page for employee count and signals ({li_employees} employees)" if li_employees else "💼 LinkedIn — searched company page, employee count not found publicly")
 
         stat.caption("⭐ Checking reviews...")
         tp_text, tp_reviews = lookup_trustpilot(company_name_known, domain_known)
         if tp_text:
             extra_corpus += f"\n\n[SOURCE: Reviews]\n{tp_text}"
-            source_summary.append(f"⭐ Reviews — {tp_reviews} review mentions found")
+           source_summary.append(f"⭐ Trustpilot & Google Reviews — {tp_reviews} review mentions found, added to pain point analysis")
 
         stat.caption("🏗️ Checking planning applications...")
         pp_text, pp_projects = lookup_planning_portal(company_name_known)
         if pp_text:
             extra_corpus += f"\n\n[SOURCE: Planning Portal]\n{pp_text}"
-            source_summary.append(f"🏗️ Planning Portal — {pp_projects} planning mentions found")
+            source_summary.append(f"🏗️ Planning Portal — {pp_projects} planning application mentions found, added to projects")
 
         # If no people found, try Google/LinkedIn people search
         if len(company_data.get("people", [])) == 0:
@@ -1509,7 +1509,7 @@ with main:
             google_text = search_people_via_google(company_name_known, domain_known)
             if google_text:
                 extra_corpus += f"\n\n[SOURCE: People Search]\n{google_text}"
-                source_summary.append("👥 People search — LinkedIn/Google profiles searched")
+                source_summary.append(f"👥 People Search — searched LinkedIn profiles and Google for named engineers at this company")
 
         # Re-analyse with enriched corpus if extra data found
         if extra_corpus:
@@ -1526,14 +1526,15 @@ with main:
 
         # Show source summary to rep
         if source_summary:
-            sources_html = " &nbsp;·&nbsp; ".join(source_summary)
-            st.markdown(f"""
-            <div style='background:#f0ede6;border:1px solid #e8e4dc;border-radius:6px;
-                 padding:8px 14px;margin-bottom:8px;font-family:JetBrains Mono,monospace;
-                 font-size:10px;color:#888;'>
-                📡 Additional sources: {sources_html}
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown('<div class="sec-label" style="margin-top:8px;">Additional Sources Used</div>', unsafe_allow_html=True)
+            for item in source_summary:
+                st.markdown(f"""
+                <div style='background:#f0ede6;border:1px solid #e8e4dc;border-radius:6px;
+                     padding:6px 14px;margin-bottom:4px;font-family:JetBrains Mono,monospace;
+                     font-size:11px;color:#666;'>
+                    {item}
+                </div>
+                """, unsafe_allow_html=True)
 
         stat.caption("💡 Generating sales strategy...")
         sales_raw  = analyze_sales(corpus + extra_corpus[:5000], company_raw)

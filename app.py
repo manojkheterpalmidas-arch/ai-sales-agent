@@ -467,10 +467,10 @@ def scrape_with_scrapingbee(url):
     try:
         try:
             api_key = st.secrets["SCRAPINGBEE_KEY"]
-            st.write(f"ScrapingBee key found: {api_key[:8]}...")
+            
         except:
             api_key = ""
-            st.write("ScrapingBee key NOT found in secrets")
+            
 
         if not api_key:
             return []
@@ -1590,7 +1590,7 @@ with main:
         else:
             pages = firecrawl_crawl(website)
         
-            st.write(f"Pages: {len(pages)}, First page length: {len(pages[0].get('markdown','')) if pages else 0}")
+        
         
         if not pages or all(len(p.get("markdown", "")) < 500 for p in pages):
             st.warning("⚠ This site uses a JavaScript cookie wall that blocks automated crawling.")

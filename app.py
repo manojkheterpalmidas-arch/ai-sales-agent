@@ -398,6 +398,23 @@ def direct_fetch(url):
     except:
         return []
 
+def fetch_google_cache(url):
+    try:
+        cache_url = f"https://webcache.googleusercontent.com/search?q=cache:{url}&hl=en"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        }
+        resp = requests.get(cache_url, headers=headers, timeout=15)
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(resp.text, "html.parser")
+        for tag in soup(["script", "style", "noscript", "iframe"]):
+            tag.decompose()
+        text = soup.get_text(separator="\n", strip=True)
+        if len(text) > 500:
+            return [{"url": url, "markdown": text}]
+        return []
+    except:
+        return []
 
 def firecrawl_crawl(url, max_pages=30):
     try:
@@ -1184,18 +1201,37 @@ with main:
         stat.caption("🔍 Crawling website with Firecrawl...")
         pages = firecrawl_crawl(website)
         if not pages or all(len(p.get("markdown", "")) < 500 for p in pages):
-            pages = direct_fetch(website)
-        if not pages or all(len(p.get("markdown", "")) < 500 for p in pages):
-            st.warning("⚠ This site uses a JavaScript cookie wall that blocks automated crawling.")
-            manual_content = st.text_area(
-                "Paste the page content manually (copy all text from the website):",
-                height=200,
-                placeholder="Open the website, select all text (Ctrl+A), copy (Ctrl+C) and paste here..."
-            )
-            if manual_content:
-                pages = [{"url": website, "markdown": manual_content}]
-            else:
-                st.stop()
+    st.warning("⚠ This site uses a JavaScript cookie wall that blocks automated crawling.")
+
+    # Try Google Cache automatically first
+    stat.caption("🔄 Trying Google Cache...")
+    cache_pages = fetch_google_cache(website)
+
+    if cache_pages and len(cache_pages[0].get("markdown", "")) > 500:
+        st.success("✅ Retrieved content via Google Cache")
+        pages = cache_pages
+    else:
+        # Google cache also failed — show manual paste
+        gc1, gc2 = st.columns(2)
+        with gc1:
+            if st.button("🔄 Try Google Cache", use_container_width=True):
+                cache_pages = fetch_google_cache(website)
+                if cache_pages:
+                    pages = cache_pages
+                    st.success("✅ Retrieved via Google Cache")
+                else:
+                    st.error("Google Cache not available for this site")
+
+        st.markdown("**Or paste manually:**")
+        manual_content = st.text_area(
+            "Open the website, select all text (Ctrl+A), copy and paste here:",
+            height=200,
+            placeholder="Paste website content here..."
+        )
+        if manual_content:
+            pages = [{"url": website, "markdown": manual_content}]
+        else:
+            st.stop()
 
         
 

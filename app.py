@@ -1921,7 +1921,9 @@ with main:
                 st.session_state["generated_email"] = ""
                 st.session_state["email_domain"] = current_domain
 
-            if st.button("✉ Generate Email Draft"):
+            with st.form("email_form"):
+                submitted = st.form_submit_button("✉ Generate Email Draft")
+            if submitted:
                 with st.spinner("Writing email..."):
                     st.session_state["generated_email"] = generate_email(company_data, sales_data)
 

@@ -630,7 +630,7 @@ def extract_domain(url):
     from urllib.parse import urlparse
     return urlparse(url).netloc.replace("www.", "")
 
-def (company, cd, sd):
+def export_pdf(company, cd, sd):
     import io
     from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors

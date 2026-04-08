@@ -524,7 +524,7 @@ def ask_deepseek(system, user, max_tokens=2000, temperature=0.1):
 
 def analyze_company(corpus):
     return ask_deepseek(
-        "You are a B2B sales analyst for MIDAS IT (FEA/FEM software). Extract facts only. Respond in pure JSON, no markdown.",
+        "You are a B2B sales analyst for MIDAS IT (FEA/FEM software). Extract facts only. Respond in pure JSON, no markdown. Always respond in English regardless of the language of the website content.",
         f"""Return ONLY valid JSON:
 {{
   "company_name": "string",
@@ -583,7 +583,7 @@ CROSS-SELL LOGIC:
 
 def analyze_sales(corpus, company_json):
     return ask_deepseek(
-        f"You are a senior B2B sales strategist for MIDAS IT. Use the product knowledge below to make specific product recommendations. Be specific and actionable. Respond in pure JSON, no markdown.\n\n{MIDAS_PRODUCTS}",
+        f"You are a senior B2B sales strategist for MIDAS IT. Use the product knowledge below to make specific product recommendations. Be specific and actionable. Respond in pure JSON, no markdown. Always respond in English regardless of the language of the website content.\n\n{MIDAS_PRODUCTS}",
         f"""Return ONLY valid JSON:
 {{
   "fem_opportunities": ["specific use case 1"],

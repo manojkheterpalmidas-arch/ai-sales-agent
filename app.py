@@ -8,6 +8,7 @@ from datetime import datetime, timezone, timedelta
 
 def now_gmt2():
     return datetime.now(timezone.utc) + timedelta(hours=2)
+st.write(now_gmt2().strftime("%d %b %Y %H:%M"))
 
 
 # ── SUPABASE CLIENT ───────────────────────────────────────────────────────────

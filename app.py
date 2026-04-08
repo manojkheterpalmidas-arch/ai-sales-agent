@@ -721,23 +721,24 @@ def analyze_sales(corpus, company_json):
         f"You are a senior B2B sales strategist for MIDAS IT. Use the product knowledge below to make specific product recommendations. Be specific and actionable. Respond in pure JSON, no markdown. Always respond in English regardless of the language of the website content.\n\n{MIDAS_PRODUCTS}",
         f"""Return ONLY valid JSON:
 {{
-  "fem_opportunities": ["specific use case 1"],
-  "pain_points": ["pain 1"],
-  "entry_point": "Who to approach first and why",
-  "value_positioning": "How to position MIDAS for this company",
-  "likely_objections": ["objection 1"],
-  "hiring_signals": ["signal 1"],
-  "expansion_signals": ["signal 1"],
-  "pre_meeting_mention": ["thing 1", "thing 2", "thing 3"],
-  "smart_questions": ["question 1", "question 2", "question 3"],
-  "opening_line": "One strong opening line for the first call",
+  "fem_opportunities": ["detailed specific use case 1 referencing their actual project types", "use case 2", "use case 3"],
+  "pain_points": ["specific pain point based on their work", "pain 2", "pain 3"],
+  "entry_point": "Specific person name and role to approach first, with detailed reasoning based on their seniority and relevance to FEA/FEM",
+  "value_positioning": "Detailed 2-3 sentence positioning of MIDAS specifically for this company's project types and engineering focus",
+  "likely_objections": ["specific objection based on their context", "objection 2", "objection 3"],
+  "hiring_signals": ["specific signal from their job postings or growth", "signal 2"],
+  "expansion_signals": ["specific expansion signal", "signal 2"],
+  "pre_meeting_mention": ["specific thing to mention about their actual projects", "thing 2", "thing 3"],
+  "smart_questions": ["specific question about their workflow or current tools", "question 2", "question 3"],
+  "opening_line": "One strong personalised opening line referencing something specific about their work",
   "overall_score": "Hot|Warm|Cold",
-  "score_reason": "1-sentence reason",
+  "score_reason": "2-3 sentence detailed reason for the score based on their specific context",
   "recommended_products": ["CIVIL NX", "FEA NX"],
-  "product_reason": "1-sentence explanation of why these specific products fit this company"
+  "product_reason": "2-3 sentence explanation of exactly why these specific MIDAS products fit this company based on their project types and engineering capabilities"
 }}
 Company data: {company_json}
-Website excerpt: {corpus[:4000]}"""
+Website excerpt: {corpus[:4000]}""",
+        max_tokens=6000
     )
 
 

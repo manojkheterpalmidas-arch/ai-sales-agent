@@ -437,15 +437,22 @@ def fetch_google_cache(url):
 def search_people_via_google(company_name, domain):
     try:
         from bs4 import BeautifulSoup
-        query = f'site:{domain} team OR people OR staff engineers'
-        search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
+        # Try DuckDuckGo instead — less aggressive blocking
+        query = f'{company_name} team engineers directors site:{domain}'
+        search_url = f"https://html.duckduckgo.com/html/?q={query.replace(' ', '+')}"
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         }
         resp = requests.get(search_url, headers=headers, timeout=10)
         soup = BeautifulSoup(resp.text, "html.parser")
-        text = soup.get_text(separator="\n", strip=True)
-        return text[:5000]
+        # Get just the result snippets
+        results = soup.find_all("a", class_="result__snippet")
+        text = "\n".join([r.get_text() for r in results])
+        if len(text) < 200:
+            # Fallback — get all text
+            text = soup.get_text(separator="\n", strip=True)
+        return text[:8000]
     except:
         return ""
 
@@ -1299,7 +1306,8 @@ with main:
 {{"people": [{{"name": "Full Name", "role": "Job Title", "tier": "Owner|Founder|Director|Principal|Senior|Engineer|Graduate|Technician|Other"}}]}}
 
 Text:
-{google_text}"""
+{google_text}""",
+                    max_tokens=2000
                 )
                 people_data = safe_json(people_raw)
                 if people_data.get("people"):

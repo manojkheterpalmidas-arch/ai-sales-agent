@@ -555,9 +555,35 @@ Website content:
     )
 
 
+MIDAS_PRODUCTS = """
+MIDAS PRODUCT SUITE:
+
+1. CIVIL NX — Bridges & Infrastructure
+   Best for: Bridge design (cable-stayed, PSC, steel), construction stage analysis, moving load simulation, seismic analysis, transportation infrastructure
+   Key value: Advanced FEA, automation, parametric workflows, full bridge lifecycle
+
+2. GEN NX — Buildings & General Structures  
+   Best for: High-rise buildings, RC/steel/composite structures, seismic design, parametric design, industrial structures
+   Key value: Integrated modeling→analysis→design, Excel/Grasshopper integration, automation
+
+3. FEA NX — Detailed Local Analysis
+   Best for: Steel connections, anchor zones, bridge joints, concrete cracking, nonlinear problems, soil-structure interaction details
+   Key value: 2D/3D solid modeling, advanced nonlinear, CAD import, high-quality meshing
+
+4. GTS NX — Geotechnical
+   Best for: Foundations, tunneling (metro/underground), deep excavation, slope stability, groundwater/seepage, soil-structure interaction
+   Key value: Advanced soil models, terrain modeling from borehole data, construction stage simulation
+
+CROSS-SELL LOGIC:
+- Bridge firm → CIVIL NX + FEA NX (global + local detailing)
+- Building firm → GEN NX + FEA NX (global + connection design)
+- Geotechnical firm → GTS NX + CIVIL NX (soil + structure)
+- Full service firm → Full suite
+"""
+
 def analyze_sales(corpus, company_json):
     return ask_deepseek(
-        "You are a senior B2B sales strategist for MIDAS IT (MIDAS Civil, Gen, FEA NX). Be specific and actionable. Respond in pure JSON, no markdown.",
+        f"You are a senior B2B sales strategist for MIDAS IT. Use the product knowledge below to make specific product recommendations. Be specific and actionable. Respond in pure JSON, no markdown.\n\n{MIDAS_PRODUCTS}",
         f"""Return ONLY valid JSON:
 {{
   "fem_opportunities": ["specific use case 1"],
@@ -571,7 +597,9 @@ def analyze_sales(corpus, company_json):
   "smart_questions": ["question 1", "question 2", "question 3"],
   "opening_line": "One strong opening line for the first call",
   "overall_score": "Hot|Warm|Cold",
-  "score_reason": "1-sentence reason"
+  "score_reason": "1-sentence reason",
+  "recommended_products": ["CIVIL NX", "FEA NX"],
+  "product_reason": "1-sentence explanation of why these specific products fit this company"
 }}
 Company data: {company_json}
 Website excerpt: {corpus[:8000]}"""
@@ -1266,6 +1294,16 @@ with main:
                 st.markdown('<div class="sec-label" style="margin-top:16px;">Likely Objections</div>', unsafe_allow_html=True)
                 for obj in sales_data.get("likely_objections", []):
                     st.markdown(f'<div class="insight-card" style="border-left-color:#e05c2a;">⚠ {obj}</div>', unsafe_allow_html=True)
+                    
+                st.markdown('<div class="sec-label" style="margin-top:16px;">Recommended MIDAS Products</div>', unsafe_allow_html=True)
+                products = sales_data.get("recommended_products", [])
+                product_reason = sales_data.get("product_reason", "")
+                if products:
+                    pills = " ".join(f'<span class="pill-tag pill-red">{p}</span>' for p in products)
+                    st.markdown(f"<div style='margin-bottom:8px;'>{pills}</div>", unsafe_allow_html=True)
+                if product_reason:
+                    st.markdown(f"<div style='font-size:13px;color:#555;'>{product_reason}</div>", unsafe_allow_html=True)
+                    
             with sb:
                 st.markdown('<div class="sec-label">Pre-Meeting Cheat Sheet</div>', unsafe_allow_html=True)
                 st.markdown("<div style='font-size:11px;color:#888;font-family:\"JetBrains Mono\",monospace;letter-spacing:0.1em;margin-bottom:8px;'>3 THINGS TO MENTION</div>", unsafe_allow_html=True)

@@ -1548,6 +1548,13 @@ with main:
 
         stat.caption("🔍 Crawling website with Firecrawl...")
         pages = firecrawl_crawl(website)
+
+        # Use cached pages if previously fetched
+        if st.session_state.get("use_cache") and st.session_state.get("cache_pages"):
+            pages = st.session_state["cache_pages"]
+            st.session_state["use_cache"] = False
+            st.session_state["cache_pages"] = None
+        
         if not pages or all(len(p.get("markdown", "")) < 500 for p in pages):
             st.warning("⚠ This site uses a JavaScript cookie wall that blocks automated crawling.")
         
@@ -1564,9 +1571,10 @@ with main:
                 with gc1:
                     if st.button("🔄 Try Google Cache", use_container_width=True):
                         cache_pages = fetch_google_cache(website)
-                        if cache_pages:
-                            pages = cache_pages
-                            st.success("✅ Retrieved via Google Cache")
+                        if cache_pages and any(len(p.get("markdown","")) > 500 for p in cache_pages):
+                            st.session_state["cache_pages"] = cache_pages
+                            st.session_state["use_cache"] = True
+                            st.rerun()
                         else:
                             st.error("Google Cache not available for this site")
         

@@ -398,23 +398,6 @@ def direct_fetch(url):
     except:
         return []
 
-def fetch_google_cache(url):
-    try:
-        cache_url = f"https://webcache.googleusercontent.com/search?q=cache:{url}&hl=en"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        }
-        resp = requests.get(cache_url, headers=headers, timeout=15)
-        from bs4 import BeautifulSoup
-        soup = BeautifulSoup(resp.text, "html.parser")
-        for tag in soup(["script", "style", "noscript", "iframe"]):
-            tag.decompose()
-        text = soup.get_text(separator="\n", strip=True)
-        if len(text) > 500:
-            return [{"url": url, "markdown": text}]
-        return []
-    except:
-        return []
 
 def fetch_google_cache(url):
     from bs4 import BeautifulSoup

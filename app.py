@@ -8,7 +8,6 @@ from datetime import datetime, timezone, timedelta
 
 def now_gmt2():
     return datetime.now(timezone.utc) + timedelta(hours=2)
-st.write(now_gmt2().strftime("%d %b %Y %H:%M"))
 
 
 # ── SUPABASE CLIENT ───────────────────────────────────────────────────────────
@@ -1695,8 +1694,7 @@ with main:
             <div style='font-size:14px;color:#555;'>{score_reason}</div>
             """, unsafe_allow_html=True)
         with hc2:
-            st.markdown(f"<div style='text-align:right;font-family:\"JetBrains Mono\",monospace;font-size:11px;color:#bbb;padding-top:8px;'>{datetime.now().strftime('%d %b %Y %H:%M')}</div>", unsafe_allow_html=True)
-
+            st.markdown(f"<div style='text-align:right;font-family:\"JetBrains Mono\",monospace;font-size:11px;color:#bbb;padding-top:8px;'>{now_gmt2().strftime('%d %b %Y %H:%M')}</div>", unsafe_allow_html=True)
         st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
         m1, m2, m3, m4, m5 = st.columns(5)

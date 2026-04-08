@@ -821,22 +821,25 @@ def lookup_glassdoor(company_name, domain):
         all_text = ""
         review_count = 0
 
-        # Search 1 — Glassdoor via Google
+        # Extract base domain name for better matching
+        base_name = domain.replace("www.", "").split(".")[0]
+
+        # Search 1 — Glassdoor reviews via Google
         try:
-            google_url = f"https://www.google.com/search?q=site:glassdoor.com+\"{company_name}\"+reviews+engineers"
+            google_url = f"https://www.google.com/search?q=glassdoor+\"{company_name}\"+reviews+engineers+software+tools+employees"
             resp = requests.get(google_url, headers=headers, timeout=10)
             soup = BeautifulSoup(resp.text, "html.parser")
             for tag in soup(["script", "style"]):
                 tag.decompose()
             text = soup.get_text(separator="\n", strip=True)
             all_text += text
-            review_count += text.lower().count("review")
+            review_count += text.lower().count("glassdoor")
         except:
             pass
 
-        # Search 2 — Glassdoor via DuckDuckGo
+        # Search 2 — Glassdoor via DuckDuckGo with domain
         try:
-            ddg_url = f"https://html.duckduckgo.com/html/?q=site:glassdoor.com+\"{company_name}\"+engineer+OR+software+OR+tools"
+            ddg_url = f"https://html.duckduckgo.com/html/?q=glassdoor+{base_name}+engineers+reviews+software"
             resp = requests.get(ddg_url, headers=headers, timeout=10)
             soup = BeautifulSoup(resp.text, "html.parser")
             results = soup.find_all("a", class_="result__snippet")
@@ -846,10 +849,11 @@ def lookup_glassdoor(company_name, domain):
         except:
             pass
 
-        # Search 3 — Glassdoor company overview
+        # Search 3 — Direct Glassdoor URL attempt
         try:
-            overview_url = f"https://www.google.com/search?q=glassdoor+\"{company_name}\"+employees+rating+software+tools+engineering"
-            resp = requests.get(overview_url, headers=headers, timeout=10)
+            gd_url = f"https://www.glassdoor.co.uk/Reviews/{base_name}-Reviews-*.htm"
+            search_url = f"https://www.google.com/search?q=glassdoor.co.uk+{company_name}+reviews+employee+size+software"
+            resp = requests.get(search_url, headers=headers, timeout=10)
             soup = BeautifulSoup(resp.text, "html.parser")
             for tag in soup(["script", "style"]):
                 tag.decompose()
@@ -858,9 +862,9 @@ def lookup_glassdoor(company_name, domain):
         except:
             pass
 
-        # Search 4 — Indeed as backup (also has company reviews and team size)
+        # Search 4 — Indeed reviews
         try:
-            indeed_url = f"https://html.duckduckgo.com/html/?q=site:indeed.com+\"{company_name}\"+reviews+engineers+software"
+            indeed_url = f"https://html.duckduckgo.com/html/?q=indeed.com+\"{company_name}\"+reviews+engineer+software+tools"
             resp = requests.get(indeed_url, headers=headers, timeout=10)
             soup = BeautifulSoup(resp.text, "html.parser")
             results = soup.find_all("a", class_="result__snippet")
@@ -870,7 +874,19 @@ def lookup_glassdoor(company_name, domain):
         except:
             pass
 
-        return all_text[:4000], review_count
+        # Search 5 — Employee count specifically
+        try:
+            size_url = f"https://www.google.com/search?q=\"{company_name}\"+employees+size+headquarters+glassdoor+OR+linkedin+OR+indeed"
+            resp = requests.get(size_url, headers=headers, timeout=10)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for tag in soup(["script", "style"]):
+                tag.decompose()
+            text = soup.get_text(separator="\n", strip=True)
+            all_text += "\n\n" + text
+        except:
+            pass
+
+        return all_text[:5000], review_count
 
     except:
         return "", 0

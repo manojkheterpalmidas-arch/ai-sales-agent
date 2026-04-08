@@ -462,6 +462,32 @@ def fetch_google_cache(url):
 
     return results if results else []
 
+
+def scrape_with_scrapingbee(url):
+    try:
+        api_key = st.secrets.get("SCRAPINGBEE_KEY", "")
+        if not api_key:
+            return []
+        resp = requests.get(
+            "https://app.scrapingbee.com/api/v1/",
+            params={
+                "api_key": api_key,
+                "url": url,
+                "render_js": "true",
+                "wait": "2000",
+            },
+            timeout=30
+        )
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(resp.text, "html.parser")
+        for tag in soup(["script", "style", "noscript"]):
+            tag.decompose()
+        text = soup.get_text(separator="\n", strip=True)
+        return [{"url": url, "markdown": text}] if len(text) > 500 else []
+    except:
+        return []
+
+
 def search_people_via_google(company_name, domain):
     try:
         from bs4 import BeautifulSoup
@@ -1559,19 +1585,41 @@ with main:
         
         if not pages or all(len(p.get("markdown", "")) < 500 for p in pages):
             st.warning("⚠ This site uses a JavaScript cookie wall that blocks automated crawling.")
-        
-            # Try Google Cache automatically first
+
+            # Step 1 — Try Google Cache automatically
             stat.caption("🔄 Trying Google Cache...")
             cache_pages = fetch_google_cache(website)
-        
-            if cache_pages and len(cache_pages[0].get("markdown", "")) > 500:
+            if cache_pages and any(len(p.get("markdown","")) > 500 for p in cache_pages):
                 st.success("✅ Retrieved content via Google Cache")
                 pages = cache_pages
-            else:
-                # Google cache also failed — show manual paste
+
+            # Step 2 — Try ScrapingBee if Google Cache failed
+            if not pages or all(len(p.get("markdown", "")) < 500 for p in pages):
+                stat.caption("🌐 Trying ScrapingBee browser renderer...")
+                sb_pages = scrape_with_scrapingbee(website)
+                if sb_pages:
+                    st.success("✅ Retrieved content via ScrapingBee")
+                    pages = sb_pages
+
+            # Step 3 — Manual paste if everything failed
+            if not pages or all(len(p.get("markdown", "")) < 500 for p in pages):
+                st.markdown("""
+                <div style='background:white;border:1px solid #e8e4dc;border-radius:8px;
+                     padding:16px 20px;margin-bottom:12px;'>
+                    <div style='font-weight:600;font-size:14px;color:#111;margin-bottom:8px;'>
+                        📋 Automatic fetch failed — paste manually:
+                    </div>
+                    <div style='font-size:13px;color:#555;line-height:1.8;'>
+                        1. Open the website in your browser<br>
+                        2. Press <b>Ctrl+A</b> then <b>Ctrl+C</b><br>
+                        3. Paste below and click Analyse →
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
                 gc1, gc2 = st.columns(2)
                 with gc1:
-                    if st.button("🔄 Try Google Cache", use_container_width=True):
+                    if st.button("🔄 Retry Google Cache", use_container_width=True):
                         cache_pages = fetch_google_cache(website)
                         if cache_pages and any(len(p.get("markdown","")) > 500 for p in cache_pages):
                             st.session_state["cache_pages"] = cache_pages
@@ -1579,12 +1627,12 @@ with main:
                             st.rerun()
                         else:
                             st.error("Google Cache not available for this site")
-        
-                st.markdown("**Or paste manually:**")
+
                 manual_content = st.text_area(
-                    "Open the website, select all text (Ctrl+A), copy and paste here:",
+                    "",
                     height=200,
-                    placeholder="Paste website content here..."
+                    placeholder="Paste website content here...",
+                    label_visibility="collapsed"
                 )
                 if manual_content:
                     pages = [{"url": website, "markdown": manual_content}]

@@ -1179,11 +1179,11 @@ with main:
                 st.markdown('<div class="sec-label">Delivered Projects</div>', unsafe_allow_html=True)
         
                 for proj in projects:
-                    name        = proj.get("name", "Unknown Project")
-                    ptype       = proj.get("type", "Other")
-                    location    = proj.get("location", "")
-                    client      = proj.get("client", "")
-                    description = proj.get("description", "")
+                    name        = proj.get("name", "Unknown Project").replace('"', '').replace("'", "")
+                    ptype       = proj.get("type", "Other").replace('"', '').replace("'", "")
+                    location    = proj.get("location", "").replace('"', '').replace("'", "")
+                    client      = proj.get("client", "").replace('"', '').replace("'", "")
+                    description = proj.get("description", "").replace('"', '').replace("'", "")
                     fem         = proj.get("fem_relevant", False)
         
                     fem_html = ""
@@ -1196,7 +1196,16 @@ with main:
                         "Building":       ("rgba(0,168,90,0.05)",   "rgba(0,168,90,0.4)",   "#00784a"),
                         "Infrastructure": ("rgba(200,140,0,0.05)",  "rgba(200,140,0,0.4)",  "#8a5e00"),
                         "Residential":    ("rgba(120,80,200,0.05)", "rgba(120,80,200,0.4)", "#6040aa"),
-                        "Industrial":     ("rgba(80,80,80,0.05)",   "rgba(80,80,80,0.4)",   "#444444"),
+                        "Industrial":     ("rgba(80,80,80,0.05)",   "rgba(80,80,80,0.3)",   "#444444"),
+                        "Rail":           ("rgba(0,80,160,0.05)",   "rgba(0,80,160,0.4)",   "#005099"),
+                        "Justice":        ("rgba(160,0,80,0.05)",   "rgba(160,0,80,0.4)",   "#a00050"),
+                        "Defence":        ("rgba(60,80,60,0.05)",   "rgba(60,80,60,0.4)",   "#3c503c"),
+                        "Education":      ("rgba(0,140,140,0.05)",  "rgba(0,140,140,0.4)",  "#008080"),
+                        "Healthcare":     ("rgba(0,160,100,0.05)",  "rgba(0,160,100,0.4)",  "#00a064"),
+                        "Transport":      ("rgba(0,100,180,0.05)",  "rgba(0,100,180,0.4)",  "#0064b4"),
+                        "Energy":         ("rgba(200,120,0,0.05)",  "rgba(200,120,0,0.4)",  "#c87800"),
+                        "Mixed Use":      ("rgba(100,60,160,0.05)", "rgba(100,60,160,0.4)", "#643ca0"),
+                        "Other":          ("rgba(80,80,80,0.05)",   "rgba(80,80,80,0.3)",   "#555555"),
                     }
                     bg, border, color = type_colors.get(ptype, ("rgba(80,80,80,0.05)", "rgba(80,80,80,0.3)", "#555"))
         

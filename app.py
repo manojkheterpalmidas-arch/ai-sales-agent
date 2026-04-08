@@ -444,9 +444,9 @@ def search_people_via_google(company_name, domain):
 
         all_text = ""
 
-        # DuckDuckGo
+        # Search 1 — Site specific DuckDuckGo
         try:
-            ddg_url = f"https://html.duckduckgo.com/html/?q=site:{domain}+team+engineers+directors"
+            ddg_url = f"https://html.duckduckgo.com/html/?q=site:{domain}+team+OR+engineers+OR+directors+OR+people+OR+staff+OR+bridge+OR+structural+OR+geotechnical+OR+principal+OR+associate+OR+consultant+OR+civil+OR+BIM+OR+FEA"
             resp = requests.get(ddg_url, headers=headers, timeout=10)
             soup = BeautifulSoup(resp.text, "html.parser")
             results = soup.find_all("a", class_="result__snippet")
@@ -457,10 +457,45 @@ def search_people_via_google(company_name, domain):
         except:
             pass
 
-        # Google
+        # Search 2 — Site specific Google
         try:
-            google_url = f"https://www.google.com/search?q=site:{domain}+team+engineers+directors"
+            google_url = f"https://www.google.com/search?q=site:{domain}+team+OR+engineers+OR+directors+OR+people+OR+staff+OR+bridge+OR+structural+OR+geotechnical+OR+principal+OR+associate+OR+consultant+OR+civil+OR+BIM+OR+FEA"
             resp = requests.get(google_url, headers=headers, timeout=10)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for tag in soup(["script", "style"]):
+                tag.decompose()
+            text = soup.get_text(separator="\n", strip=True)
+            all_text += "\n\n" + text
+        except:
+            pass
+
+        # Search 3 — LinkedIn via Google
+        try:
+            li_url = f"https://www.google.com/search?q=site:linkedin.com/in+\"{company_name}\"+engineer+OR+director+OR+structural+OR+bridge+OR+geotechnical+OR+principal+OR+associate+OR+consultant+OR+civil+OR+architect+OR+BIM+OR+FEA+OR+FEM"
+            resp = requests.get(li_url, headers=headers, timeout=10)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for tag in soup(["script", "style"]):
+                tag.decompose()
+            text = soup.get_text(separator="\n", strip=True)
+            all_text += "\n\n" + text
+        except:
+            pass
+
+        # Search 4 — LinkedIn via DuckDuckGo
+        try:
+            li_ddg = f"https://html.duckduckgo.com/html/?q=site:linkedin.com/in+\"{company_name}\"+engineer+OR+director+OR+structural+OR+bridge+OR+geotechnical+OR+principal+OR+associate+OR+consultant+OR+civil+OR+BIM+OR+FEA"
+            resp = requests.get(li_ddg, headers=headers, timeout=10)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            results = soup.find_all("a", class_="result__snippet")
+            text = "\n".join([r.get_text() for r in results])
+            all_text += "\n\n" + text
+        except:
+            pass
+
+        # Search 5 — LinkedIn senior roles via Google
+        try:
+            li_url2 = f"https://www.google.com/search?q=site:linkedin.com/in+\"{company_name}\"+senior+OR+graduate+OR+technician+OR+founder+OR+owner+OR+manager+OR+director+OR+head+OR+lead+OR+chartered+OR+CEng+OR+MIStructE"
+            resp = requests.get(li_url2, headers=headers, timeout=10)
             soup = BeautifulSoup(resp.text, "html.parser")
             for tag in soup(["script", "style"]):
                 tag.decompose()

@@ -517,12 +517,67 @@ def lookup_companies_house(company_name, locations=None):
         }
 
         # Detect country from locations
-        uk_keywords = ["london", "manchester", "birmingham", "leeds", "bristol", "edinburgh",
-                       "glasgow", "liverpool", "sheffield", "uk", "england", "scotland", "wales",
-                       "united kingdom", "britain"]
-        eu_keywords = ["germany", "france", "netherlands", "belgium", "spain", "italy", "poland",
-                       "czech", "sweden", "norway", "denmark", "switzerland", "austria", "serbia",
-                       "croatia", "romania", "portugal", "greece", "finland", "ireland"]
+        uk_keywords = [
+                    "london", "manchester", "birmingham", "leeds", "bristol", "edinburgh",
+                    "glasgow", "liverpool", "sheffield", "cardiff", "belfast", "nottingham",
+                    "uk", "england", "scotland", "wales", "northern ireland", "united kingdom", "britain"
+                ]
+        
+                eu_keywords = [
+                    # Western Europe
+                    "germany", "berlin", "munich", "hamburg", "frankfurt", "cologne", "düsseldorf",
+                    "france", "paris", "lyon", "marseille", "toulouse", "bordeaux",
+                    "netherlands", "amsterdam", "rotterdam", "the hague", "eindhoven",
+                    "belgium", "brussels", "antwerp", "ghent", "bruges",
+                    "luxembourg",
+                    "switzerland", "zurich", "geneva", "basel", "bern",
+                    "austria", "vienna", "graz", "salzburg", "innsbruck",
+                    "ireland", "dublin", "cork", "galway",
+                    # Southern Europe
+                    "spain", "madrid", "barcelona", "seville", "valencia", "bilbao",
+                    "portugal", "lisbon", "porto",
+                    "italy", "rome", "milan", "naples", "turin", "florence", "bologna",
+                    "greece", "athens", "thessaloniki",
+                    "malta", "valletta",
+                    "cyprus", "nicosia",
+                    # Northern Europe
+                    "sweden", "stockholm", "gothenburg", "malmö",
+                    "norway", "oslo", "bergen", "trondheim",
+                    "denmark", "copenhagen", "aarhus",
+                    "finland", "helsinki", "tampere", "espoo",
+                    "iceland", "reykjavik",
+                    # Eastern Europe
+                    "poland", "warsaw", "krakow", "wroclaw", "gdansk", "poznan",
+                    "czech", "prague", "brno", "ostrava",
+                    "slovakia", "bratislava", "kosice",
+                    "hungary", "budapest", "debrecen",
+                    "romania", "bucharest", "cluj", "timisoara", "iasi",
+                    "bulgaria", "sofia", "plovdiv", "varna",
+                    "croatia", "zagreb", "split", "rijeka",
+                    "slovenia", "ljubljana", "maribor",
+                    "serbia", "belgrade", "novi sad",
+                    "bosnia", "sarajevo", "banja luka",
+                    "montenegro", "podgorica",
+                    "north macedonia", "skopje",
+                    "albania", "tirana",
+                    "kosovo", "pristina",
+                    # Baltic States
+                    "estonia", "tallinn", "tartu",
+                    "latvia", "riga", "daugavpils",
+                    "lithuania", "vilnius", "kaunas",
+                    # Other
+                    "moldova", "chisinau",
+                    "ukraine", "kyiv", "kharkiv", "lviv", "odessa",
+                    "belarus", "minsk",
+                    "turkey", "istanbul", "ankara", "izmir",
+                    "georgia", "tbilisi",
+                    "armenia", "yerevan",
+                    "azerbaijan", "baku",
+                    "israel", "tel aviv", "jerusalem",
+                    "morocco", "casablanca", "rabat",
+                    "tunisia", "tunis",
+                    "egypt", "cairo", "alexandria",
+                ]
 
         location_str = " ".join(locations or []).lower()
         is_uk = any(kw in location_str for kw in uk_keywords)

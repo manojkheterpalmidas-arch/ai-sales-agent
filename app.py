@@ -514,12 +514,16 @@ def build_corpus(pages):
 
 # ── AI ────────────────────────────────────────────────────────────────────────
 def ask_deepseek(system, user, max_tokens=2000, temperature=0.1):
-    resp = deepseek.chat.completions.create(
-        model="deepseek-chat",
-        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-        temperature=temperature, max_tokens=max_tokens
-    )
-    return resp.choices[0].message.content.strip()
+    try:
+        resp = deepseek.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+            temperature=temperature, max_tokens=max_tokens
+        )
+        return resp.choices[0].message.content.strip()
+    except Exception as e:
+        st.error(f"DeepSeek API error: {str(e)}")
+        return "{}"
 
 
 def analyze_company(corpus):
@@ -733,7 +737,7 @@ def analyze_sales(corpus, company_json):
   "product_reason": "1-sentence explanation of why these specific products fit this company"
 }}
 Company data: {company_json}
-Website excerpt: {corpus[:8000]}"""
+Website excerpt: {corpus[:4000]}"""
     )
 
 

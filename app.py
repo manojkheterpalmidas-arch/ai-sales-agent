@@ -1831,7 +1831,7 @@ with main:
         gd_text, gd_reviews = lookup_glassdoor(company_name_known, domain_known)
         if gd_text:
             extra_corpus += f"\n\n[SOURCE: Glassdoor & Indeed Reviews]\n{gd_text}"
-            source_summary.append(f"⭐ Glassdoor & Indeed — {gd_reviews} employee review snippets found, added to full analysis")
+        source_summary.append(f"⭐ Glassdoor & Indeed — {gd_reviews} employee review snippets found, added to full analysis")
         stat.caption("🏗️ Checking planning applications...")
         pp_text, pp_projects = lookup_planning_portal(company_name_known)
         if pp_text:
@@ -1844,7 +1844,7 @@ with main:
             google_text = search_people_via_google(company_name_known, domain_known)
             if google_text:
                 extra_corpus += f"\n\n[SOURCE: People Search]\n{google_text}"
-                source_summary.append(f"👥 People Search — searched LinkedIn profiles and Google for named engineers at this company")
+            source_summary.append(f"👥 People Search — searched LinkedIn profiles and Google for named engineers at this company")
 
         # Re-analyse with enriched corpus if extra data found
         if extra_corpus:

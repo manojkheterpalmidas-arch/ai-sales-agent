@@ -441,27 +441,34 @@ def search_people_via_google(company_name, domain):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         }
-        
+
         all_text = ""
-        queries = [
-            f'{company_name} team engineers directors',
-            f'{company_name} structural engineer consultant',
-            f'site:{domain} engineer director consultant',
-        ]
-        
-        for query in queries:
-            try:
-                search_url = f"https://html.duckduckgo.com/html/?q={query.replace(' ', '+')}"
-                resp = requests.get(search_url, headers=headers, timeout=10)
-                soup = BeautifulSoup(resp.text, "html.parser")
-                results = soup.find_all("a", class_="result__snippet")
-                text = "\n".join([r.get_text() for r in results])
-                if len(text) < 200:
-                    text = soup.get_text(separator="\n", strip=True)
-                all_text += "\n\n" + text
-            except:
-                continue
-        
+
+        # DuckDuckGo
+        try:
+            ddg_url = f"https://html.duckduckgo.com/html/?q=site:{domain}+team+engineers+directors"
+            resp = requests.get(ddg_url, headers=headers, timeout=10)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            results = soup.find_all("a", class_="result__snippet")
+            text = "\n".join([r.get_text() for r in results])
+            if len(text) < 200:
+                text = soup.get_text(separator="\n", strip=True)
+            all_text += text
+        except:
+            pass
+
+        # Google
+        try:
+            google_url = f"https://www.google.com/search?q=site:{domain}+team+engineers+directors"
+            resp = requests.get(google_url, headers=headers, timeout=10)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for tag in soup(["script", "style"]):
+                tag.decompose()
+            text = soup.get_text(separator="\n", strip=True)
+            all_text += "\n\n" + text
+        except:
+            pass
+
         return all_text[:8000]
     except:
         return ""

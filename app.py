@@ -76,8 +76,11 @@ def get_note(domain):
 def days_ago(date_str):
     try:
         dt = datetime.strptime(date_str, "%d %b %Y %H:%M")
-        diff = (datetime.now() - dt).days
-        if diff == 0:
+        now = now_gmt2().replace(tzinfo=None)
+        diff = (now - dt).days
+        if diff < 0:
+            return "today"
+        elif diff == 0:
             return "today"
         elif diff == 1:
             return "yesterday"

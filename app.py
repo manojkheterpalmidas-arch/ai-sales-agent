@@ -524,7 +524,7 @@ def ask_deepseek(system, user, max_tokens=2000, temperature=0.1):
 
 def analyze_company(corpus):
     return ask_deepseek(
-        "You are a B2B sales analyst for MIDAS IT (FEA/FEM software). Extract facts only. Respond in pure JSON, no markdown. CRITICAL: You MUST translate ALL extracted content into English. Even if the website is in Serbian, French, German, or any other language, ALL values in your JSON response must be written in English. Do not copy foreign language text into the JSON.",
+        "You are a B2B sales analyst for MIDAS IT (FEA/FEM software). Extract facts only. Respond in pure JSON, no markdown. CRITICAL: Translate ALL descriptive content (overviews, capabilities, project types, roles, descriptions) into English. However, NEVER translate or modify people's names — keep all person names exactly as written on the website, including Cyrillic, accented, or special characters. Do not transliterate names.",
         f"""Return ONLY valid JSON:
 {{
   "company_name": "string",

@@ -416,6 +416,42 @@ def fetch_google_cache(url):
     except:
         return []
 
+def fetch_google_cache(url):
+    from bs4 import BeautifulSoup
+    from urllib.parse import urlparse
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    }
+
+    results = []
+    
+    # Common team/people page paths to try
+    base = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
+    urls_to_try = [
+        url,
+        f"{base}/our-team",
+        f"{base}/team",
+        f"{base}/people",
+        f"{base}/about-us",
+        f"{base}/about",
+    ]
+
+    for target_url in urls_to_try:
+        try:
+            cache_url = f"https://webcache.googleusercontent.com/search?q=cache:{target_url}&hl=en"
+            resp = requests.get(cache_url, headers=headers, timeout=15)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for tag in soup(["script", "style", "noscript", "iframe"]):
+                tag.decompose()
+            text = soup.get_text(separator="\n", strip=True)
+            if len(text) > 500:
+                results.append({"url": target_url, "markdown": text})
+        except:
+            continue
+
+    return results if results else []
+
 def firecrawl_crawl(url, max_pages=30):
     try:
         # First try scraping with actions to handle cookie popups

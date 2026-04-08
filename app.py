@@ -541,6 +541,8 @@ def analyze_company(corpus):
   "software_mentioned": ["any FEA/CAD/BIM tools"],
   "people": [{{"name": "Full Name", "role": "Job Title", "tier": "Owner|Founder|Director|Principal|Senior|Engineer|Graduate|Technician|Other"}}],
   "open_roles": [{{"title": "Job title", "skills": ["skill1"], "fem_mentioned": true}}],
+  "projects": [{{"name": "Project name", "type": "Bridge|Building|Metro|Infrastructure|Residential|Industrial|Other", "location": "City or null", "client": "Client name or null", "description": "One sentence summary", "fem_relevant": true}}],
+  "confidence": "High|Medium|Low",
   "confidence": "High|Medium|Low",
   "confidence_reason": "One sentence explaining why confidence is High, Medium or Low based on data quality and completeness of the website"
 }}
@@ -549,6 +551,7 @@ Extract ONLY engineering and technical staff — directors, engineers, technicia
 EXCLUDE: blog authors, contributing authors, lead authors, writers, journalists, or anyone whose role relates to writing/publishing rather than engineering.
 Only include people who work AT the company as engineers or technical staff.
 For locations: ONLY explicitly stated office cities.
+For projects: extract ALL completed or ongoing projects mentioned anywhere on the site — project pages, case studies, portfolio sections, news. Include project name, type, location if stated, client if stated, and a one sentence description. Set fem_relevant to true if the project involved structural analysis, FEA, FEM, complex geometry, bridges, or heavy civil engineering.
 Website content:
 {corpus}"""
     )
@@ -627,7 +630,7 @@ def extract_domain(url):
     from urllib.parse import urlparse
     return urlparse(url).netloc.replace("www.", "")
 
-def export_pdf(company, cd, sd):
+def (company, cd, sd):
     import io
     from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors
@@ -690,6 +693,36 @@ def export_pdf(company, cd, sd):
 
     section("Company Overview");          bullets(cd.get("overview", []))
     section("Engineering Capabilities");  bullets(cd.get("engineering_capabilities", []))
+
+    # ── PROJECTS ──
+    projects = cd.get("projects", [])
+    if projects:
+        section("Delivered Projects")
+        for proj in projects:
+            name        = proj.get("name", "Unknown")
+            ptype       = proj.get("type", "")
+            location    = proj.get("location", "")
+            client      = proj.get("client", "")
+            description = proj.get("description", "")
+            fem         = proj.get("fem_relevant", False)
+    
+            meta_parts = []
+            if ptype:
+                meta_parts.append(ptype)
+            if location:
+                meta_parts.append(location)
+            if client:
+                meta_parts.append(f"Client: {client}")
+            if fem:
+                meta_parts.append("FEM RELEVANT")
+            meta_line = "  ·  ".join(meta_parts)
+    
+            story.append(Paragraph(f"<b>{name}</b>", S_BODY))
+            if meta_line:
+                story.append(Paragraph(meta_line, S_META))
+            if description:
+                story.append(Paragraph(description, S_BULLET))
+            story.append(Spacer(1, 2*mm))
 
     pts = cd.get("project_types", [])
     if pts:
@@ -1064,17 +1097,18 @@ with main:
 
         st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
-        m1, m2, m3, m4 = st.columns(4)
+        m1, m2, m3, m4, m5 = st.columns(5)
         m1.metric("People Identified", len(company_data.get("people", [])))
-        m2.metric("FEM Opportunities", len(sales_data.get("fem_opportunities", [])))
-        m3.metric("Open Roles",        len(company_data.get("open_roles", [])))
-        m4.metric("Pages Crawled",     pages_count)
+        m2.metric("Projects Found",    len(company_data.get("projects", [])))
+        m3.metric("FEM Opportunities", len(sales_data.get("fem_opportunities", [])))
+        m4.metric("Open Roles",        len(company_data.get("open_roles", [])))
+        m5.metric("Pages Crawled",     pages_count)
 
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
         st.divider()
 
-        t1, t2, t3, t4, t5, t6, t7 = st.tabs([
-            "🏢  Company", "👥  People", "💡  FEM Opps",
+        t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs([
+            "🏢  Company", "👥  People", "📐  Projects", "💡  FEM Opps",
             "🎯  Strategy", "📋  Vacancies", "📧  Email", "📤  Export & Notes"
         ])
 
@@ -1133,8 +1167,66 @@ with main:
             else:
                 st.info("No people identified. The site may not have a public team page.")
 
-        # TAB 3 ── FEM OPPS
+
+        # TAB 3 ── PROJECTS
         with t3:
+            projects = company_data.get("projects", [])
+            if projects:
+                fem_proj = sum(1 for p in projects if p.get("fem_relevant"))
+                if fem_proj:
+                    st.success(f"🎯 {fem_proj} project(s) involved FEM/FEA level structural analysis — strong indicator of software need")
+        
+                st.markdown('<div class="sec-label">Delivered Projects</div>', unsafe_allow_html=True)
+        
+                for proj in projects:
+                    name        = proj.get("name", "Unknown Project")
+                    ptype       = proj.get("type", "Other")
+                    location    = proj.get("location", "")
+                    client      = proj.get("client", "")
+                    description = proj.get("description", "")
+                    fem         = proj.get("fem_relevant", False)
+        
+                    fem_html = ""
+                    if fem:
+                        fem_html = '<span style="font-family:JetBrains Mono,monospace;font-size:10px;color:#c8471e;background:rgba(200,71,30,0.08);border:1px solid rgba(200,71,30,0.3);padding:3px 9px;border-radius:20px;white-space:nowrap;margin-left:8px;">FEM RELEVANT</span>'
+        
+                    type_colors = {
+                        "Bridge":         ("rgba(200,71,30,0.05)",  "rgba(200,71,30,0.4)",  "#c8471e"),
+                        "Metro":          ("rgba(0,100,200,0.05)",  "rgba(0,100,200,0.4)",  "#0055cc"),
+                        "Building":       ("rgba(0,168,90,0.05)",   "rgba(0,168,90,0.4)",   "#00784a"),
+                        "Infrastructure": ("rgba(200,140,0,0.05)",  "rgba(200,140,0,0.4)",  "#8a5e00"),
+                        "Residential":    ("rgba(120,80,200,0.05)", "rgba(120,80,200,0.4)", "#6040aa"),
+                        "Industrial":     ("rgba(80,80,80,0.05)",   "rgba(80,80,80,0.4)",   "#444444"),
+                    }
+                    bg, border, color = type_colors.get(ptype, ("rgba(80,80,80,0.05)", "rgba(80,80,80,0.3)", "#555"))
+        
+                    meta_parts = []
+                    if location:
+                        meta_parts.append(f"📍 {location}")
+                    if client:
+                        meta_parts.append(f"👤 {client}")
+                    meta_html = "&nbsp;&nbsp;·&nbsp;&nbsp;".join(meta_parts)
+        
+                    st.markdown(f"""
+                    <div style="background:white;border:1px solid #e8e4dc;border-radius:8px;padding:16px 20px;margin-bottom:10px;">
+                        <div style="display:flex;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
+                            <div style="font-weight:600;font-size:15px;color:#111;">{name}</div>
+                            {fem_html}
+                            <span style="font-family:JetBrains Mono,monospace;font-size:10px;padding:3px 10px;
+                                 background:{bg};border:1px solid {border};border-radius:20px;color:{color};">
+                                {ptype}
+                            </span>
+                        </div>
+                        <div style="font-size:12px;color:#aaa;font-family:JetBrains Mono,monospace;margin-bottom:6px;">{meta_html}</div>
+                        <div style="font-size:13px;color:#555;line-height:1.6;">{description}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.info("No projects found. The site may not have a public portfolio or case studies section.")
+
+
+        # TAB 4 ── FEM OPPS
+        with t4:
             fa, fb = st.columns([3, 2])
             with fa:
                 st.markdown('<div class="sec-label">FEM / FEA Opportunities</div>', unsafe_allow_html=True)
@@ -1148,8 +1240,8 @@ with main:
                 for s in sales_data.get("expansion_signals", []):
                     st.markdown(f'<div class="signal-card">◆ {s}</div>', unsafe_allow_html=True)
 
-        # TAB 4 ── STRATEGY
-        with t4:
+        # TAB 5 ── STRATEGY
+        with t5:
             sa, sb = st.columns(2)
             with sa:
                 st.markdown('<div class="sec-label">Entry Point</div>', unsafe_allow_html=True)
@@ -1175,8 +1267,8 @@ with main:
                         <span style="color:#333;display:block;padding-left:20px;">{opening}</span>
                     </div>''', unsafe_allow_html=True)
 
-        # TAB 5 ── VACANCIES
-        with t5:
+        # TAB 6 ── VACANCIES
+        with t6:
             roles = company_data.get("open_roles", [])
             if roles:
                 fem_n = sum(1 for r in roles if r.get("fem_mentioned"))
@@ -1199,8 +1291,8 @@ with main:
             else:
                 st.info("No relevant vacancies found on this website.")
 
-        # TAB 6 ── EMAIL
-        with t6:
+        # TAB 7 ── EMAIL
+        with t7:
             st.markdown('<div class="sec-label">Cold Outreach Email</div>', unsafe_allow_html=True)
             st.markdown("<div style='background:white;border:1px solid #e8e4dc;border-radius:8px;padding:16px 20px;margin-bottom:16px;font-size:13px;color:#888;'>Generate a personalised cold email based on the company intelligence. Edit before sending.</div>", unsafe_allow_html=True)
 
@@ -1233,8 +1325,8 @@ with main:
                 full_copy = f"Subject: {subject}\n\n{edited_email}" if subject else edited_email
                 st.download_button("📋 Download as .txt", data=full_copy, file_name=f"MIDAS_Email_{company_name.replace(' ','_')}.txt", mime="text/plain")
 
-        # TAB 7 ── EXPORT & NOTES
-        with t7:
+        # TAB 8 ── EXPORT & NOTES
+        with t8:
             ea, eb = st.columns([1, 1])
             with ea:
                 st.markdown('<div class="sec-label">PDF Export</div>', unsafe_allow_html=True)

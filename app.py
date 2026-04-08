@@ -508,6 +508,137 @@ def search_people_via_google(company_name, domain):
     except:
         return ""
 
+def lookup_companies_house(company_name):
+    try:
+        from bs4 import BeautifulSoup
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        }
+        # Search Companies House
+        search_url = f"https://find-and-update.company-information.service.gov.uk/search?q={company_name.replace(' ', '+')}"
+        resp = requests.get(search_url, headers=headers, timeout=10)
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # Get first result link
+        result = soup.find("a", class_="govuk-link")
+        if not result:
+            return "", 0
+
+        company_url = "https://find-and-update.company-information.service.gov.uk" + result["href"]
+
+        # Get company page
+        resp2 = requests.get(company_url, headers=headers, timeout=10)
+        soup2 = BeautifulSoup(resp2.text, "html.parser")
+
+        # Get officers page
+        officers_url = company_url + "/officers"
+        resp3 = requests.get(officers_url, headers=headers, timeout=10)
+        soup3 = BeautifulSoup(resp3.text, "html.parser")
+
+        text = soup2.get_text(separator="\n", strip=True)
+        text += "\n\n" + soup3.get_text(separator="\n", strip=True)
+
+        # Count directors
+        director_count = text.lower().count("director")
+
+        return text[:5000], director_count
+    except:
+        return "", 0
+
+
+def lookup_linkedin_company(company_name):
+    try:
+        from bs4 import BeautifulSoup
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        }
+        # Search LinkedIn company via Google
+        query = f'site:linkedin.com/company "{company_name}" engineers employees'
+        search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
+        resp = requests.get(search_url, headers=headers, timeout=10)
+        soup = BeautifulSoup(resp.text, "html.parser")
+        for tag in soup(["script", "style"]):
+            tag.decompose()
+        text = soup.get_text(separator="\n", strip=True)
+
+        # Also try DuckDuckGo
+        ddg_url = f"https://html.duckduckgo.com/html/?q=site:linkedin.com/company+\"{company_name}\""
+        resp2 = requests.get(ddg_url, headers=headers, timeout=10)
+        soup2 = BeautifulSoup(resp2.text, "html.parser")
+        results = soup2.find_all("a", class_="result__snippet")
+        text += "\n" + "\n".join([r.get_text() for r in results])
+
+        # Extract employee count signal
+        employee_signal = 0
+        import re
+        matches = re.findall(r'(\d+[\,\d]*)\s*employees', text.lower())
+        if matches:
+            employee_signal = matches[0].replace(",", "")
+
+        return text[:3000], employee_signal
+    except:
+        return "", 0
+
+
+def lookup_trustpilot(company_name, domain):
+    try:
+        from bs4 import BeautifulSoup
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        }
+        # Try Trustpilot directly
+        trustpilot_url = f"https://www.trustpilot.com/review/{domain}"
+        resp = requests.get(trustpilot_url, headers=headers, timeout=10)
+        soup = BeautifulSoup(resp.text, "html.parser")
+        text = soup.get_text(separator="\n", strip=True)
+
+        # Also search Google reviews
+        google_url = f"https://www.google.com/search?q=\"{company_name}\"+reviews+OR+testimonials+engineers"
+        resp2 = requests.get(google_url, headers=headers, timeout=10)
+        soup2 = BeautifulSoup(resp2.text, "html.parser")
+        for tag in soup2(["script", "style"]):
+            tag.decompose()
+        text += "\n\n" + soup2.get_text(separator="\n", strip=True)
+
+        review_count = text.lower().count("review")
+
+        return text[:3000], review_count
+    except:
+        return "", 0
+
+
+def lookup_planning_portal(company_name):
+    try:
+        from bs4 import BeautifulSoup
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        }
+        # Search planning applications via Google
+        query = f'"{company_name}" planning application structural engineer site:gov.uk OR site:planningportal.co.uk OR site:localplanning'
+        search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
+        resp = requests.get(search_url, headers=headers, timeout=10)
+        soup = BeautifulSoup(resp.text, "html.parser")
+        for tag in soup(["script", "style"]):
+            tag.decompose()
+        text = soup.get_text(separator="\n", strip=True)
+
+        # Also DuckDuckGo
+        ddg_url = f"https://html.duckduckgo.com/html/?q=\"{company_name}\"+planning+application+structural"
+        resp2 = requests.get(ddg_url, headers=headers, timeout=10)
+        soup2 = BeautifulSoup(resp2.text, "html.parser")
+        results = soup2.find_all("a", class_="result__snippet")
+        text += "\n" + "\n".join([r.get_text() for r in results])
+
+        project_count = text.lower().count("planning")
+
+        return text[:3000], project_count
+    except:
+        return "", 0
+
 def firecrawl_crawl(url, max_pages=30):
     try:
         # First try scraping with actions to handle cookie popups
@@ -1340,34 +1471,72 @@ with main:
         stat.caption("🧠 Extracting company profile...")
         company_raw  = analyze_company(corpus)
         company_data = safe_json(company_raw)
-        prog.progress(75)
-        company_data = safe_json(company_raw)
-        prog.progress(75)
+        prog.progress(60)
 
-        # If no people found, try Google search fallback
+        # ── ADDITIONAL SOURCE LOOKUPS (Option B — after company name known) ──
+        company_name_known = company_data.get("company_name", "")
+        domain_known       = extract_domain(website)
+        extra_corpus       = ""
+        source_summary     = []
+
+        stat.caption("📋 Checking Companies House...")
+        ch_text, ch_directors = lookup_companies_house(company_name_known)
+        if ch_text:
+            extra_corpus += f"\n\n[SOURCE: Companies House]\n{ch_text}"
+            source_summary.append(f"📋 Companies House — {ch_directors} director entries found")
+
+        stat.caption("💼 Checking LinkedIn...")
+        li_text, li_employees = lookup_linkedin_company(company_name_known)
+        if li_text:
+            extra_corpus += f"\n\n[SOURCE: LinkedIn]\n{li_text}"
+            source_summary.append(f"💼 LinkedIn — {li_employees} employees signal found" if li_employees else "💼 LinkedIn — company page found")
+
+        stat.caption("⭐ Checking reviews...")
+        tp_text, tp_reviews = lookup_trustpilot(company_name_known, domain_known)
+        if tp_text:
+            extra_corpus += f"\n\n[SOURCE: Reviews]\n{tp_text}"
+            source_summary.append(f"⭐ Reviews — {tp_reviews} review mentions found")
+
+        stat.caption("🏗️ Checking planning applications...")
+        pp_text, pp_projects = lookup_planning_portal(company_name_known)
+        if pp_text:
+            extra_corpus += f"\n\n[SOURCE: Planning Portal]\n{pp_text}"
+            source_summary.append(f"🏗️ Planning Portal — {pp_projects} planning mentions found")
+
+        # If no people found, try Google/LinkedIn people search
         if len(company_data.get("people", [])) == 0:
-            stat.caption("👥 No people found — searching Google for team info...")
-            google_text = search_people_via_google(
-                company_data.get("company_name", ""),
-                extract_domain(website)
-            )
+            stat.caption("👥 Searching for people via Google & LinkedIn...")
+            google_text = search_people_via_google(company_name_known, domain_known)
             if google_text:
-                people_raw = ask_deepseek(
-                    "You are extracting people from search result text. Return ONLY valid JSON, no markdown. NEVER translate names.",
-                    f"""Extract all named people with their roles from this text. Return JSON:
-{{"people": [{{"name": "Full Name", "role": "Job Title", "tier": "Owner|Founder|Director|Principal|Senior|Engineer|Graduate|Technician|Other"}}]}}
+                extra_corpus += f"\n\n[SOURCE: People Search]\n{google_text}"
+                source_summary.append("👥 People search — LinkedIn/Google profiles searched")
 
-Text:
-{google_text}""",
-                    max_tokens=2000
-                )
-                people_data = safe_json(people_raw)
-                if people_data.get("people"):
-                    company_data["people"] = people_data["people"]
+        # Re-analyse with enriched corpus if extra data found
+        if extra_corpus:
+            enriched_corpus = corpus + extra_corpus[:20000]
+            stat.caption("🧠 Re-analysing with additional sources...")
+            company_raw2  = analyze_company(enriched_corpus)
+            company_data2 = safe_json(company_raw2)
+            # Merge — prefer enriched data but keep original if enriched is empty
+            for key in ["people", "projects", "locations", "employee_count", "founded"]:
+                if company_data2.get(key) and len(str(company_data2.get(key))) > len(str(company_data.get(key, ""))):
+                    company_data[key] = company_data2[key]
 
-        
+        prog.progress(75)
+
+        # Show source summary to rep
+        if source_summary:
+            sources_html = " &nbsp;·&nbsp; ".join(source_summary)
+            st.markdown(f"""
+            <div style='background:#f0ede6;border:1px solid #e8e4dc;border-radius:6px;
+                 padding:8px 14px;margin-bottom:8px;font-family:JetBrains Mono,monospace;
+                 font-size:10px;color:#888;'>
+                📡 Additional sources: {sources_html}
+            </div>
+            """, unsafe_allow_html=True)
+
         stat.caption("💡 Generating sales strategy...")
-        sales_raw  = analyze_sales(corpus, company_raw)
+        sales_raw  = analyze_sales(corpus + extra_corpus[:5000], company_raw)
         sales_data = safe_json(sales_raw)
         prog.progress(100)
 

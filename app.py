@@ -320,7 +320,7 @@ def firecrawl_multi_scrape(base_url):
         html_resp = requests.get(base_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
         soup = BeautifulSoup(html_resp.text, "html.parser")
         domain = urlparse(base_url).netloc
-        priority_keywords = ["team","people","our-team","about","staff","leadership","directors","who-we-are","careers","jobs","vacancies","join","projects","services","what-we-do","contact"]
+        priority_keywords = ["people","team","our-team","staff","leadership","directors","who-we-are","about","careers","jobs","vacancies","join","projects","services","what-we-do","contact"]
         all_links = []
         for a in soup.find_all("a", href=True):
             href = a["href"].strip()
@@ -545,6 +545,10 @@ def analyze_company(corpus):
   "confidence_reason": "One sentence explaining why confidence is High, Medium or Low based on data quality and completeness of the website"
 }}
 Extract ALL people. For locations: ONLY explicitly stated office cities.
+Extract ONLY engineering and technical staff — directors, engineers, technicians, consultants.
+EXCLUDE: blog authors, contributing authors, lead authors, writers, journalists, or anyone whose role relates to writing/publishing rather than engineering.
+Only include people who work AT the company as engineers or technical staff.
+For locations: ONLY explicitly stated office cities.
 Website content:
 {corpus}"""
     )

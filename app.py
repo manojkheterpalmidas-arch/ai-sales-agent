@@ -1201,37 +1201,37 @@ with main:
         stat.caption("🔍 Crawling website with Firecrawl...")
         pages = firecrawl_crawl(website)
         if not pages or all(len(p.get("markdown", "")) < 500 for p in pages):
-    st.warning("⚠ This site uses a JavaScript cookie wall that blocks automated crawling.")
-
-    # Try Google Cache automatically first
-    stat.caption("🔄 Trying Google Cache...")
-    cache_pages = fetch_google_cache(website)
-
-    if cache_pages and len(cache_pages[0].get("markdown", "")) > 500:
-        st.success("✅ Retrieved content via Google Cache")
-        pages = cache_pages
-    else:
-        # Google cache also failed — show manual paste
-        gc1, gc2 = st.columns(2)
-        with gc1:
-            if st.button("🔄 Try Google Cache", use_container_width=True):
-                cache_pages = fetch_google_cache(website)
-                if cache_pages:
-                    pages = cache_pages
-                    st.success("✅ Retrieved via Google Cache")
+            st.warning("⚠ This site uses a JavaScript cookie wall that blocks automated crawling.")
+        
+            # Try Google Cache automatically first
+            stat.caption("🔄 Trying Google Cache...")
+            cache_pages = fetch_google_cache(website)
+        
+            if cache_pages and len(cache_pages[0].get("markdown", "")) > 500:
+                st.success("✅ Retrieved content via Google Cache")
+                pages = cache_pages
+            else:
+                # Google cache also failed — show manual paste
+                gc1, gc2 = st.columns(2)
+                with gc1:
+                    if st.button("🔄 Try Google Cache", use_container_width=True):
+                        cache_pages = fetch_google_cache(website)
+                        if cache_pages:
+                            pages = cache_pages
+                            st.success("✅ Retrieved via Google Cache")
+                        else:
+                            st.error("Google Cache not available for this site")
+        
+                st.markdown("**Or paste manually:**")
+                manual_content = st.text_area(
+                    "Open the website, select all text (Ctrl+A), copy and paste here:",
+                    height=200,
+                    placeholder="Paste website content here..."
+                )
+                if manual_content:
+                    pages = [{"url": website, "markdown": manual_content}]
                 else:
-                    st.error("Google Cache not available for this site")
-
-        st.markdown("**Or paste manually:**")
-        manual_content = st.text_area(
-            "Open the website, select all text (Ctrl+A), copy and paste here:",
-            height=200,
-            placeholder="Paste website content here..."
-        )
-        if manual_content:
-            pages = [{"url": website, "markdown": manual_content}]
-        else:
-            st.stop()
+                    st.stop()
 
         
 

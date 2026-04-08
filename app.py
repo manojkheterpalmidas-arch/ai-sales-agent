@@ -556,7 +556,6 @@ def search_people_via_google(company_name, domain):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         }
-
         all_text = ""
 
         # Search 1 — Site specific DuckDuckGo
@@ -572,6 +571,8 @@ def search_people_via_google(company_name, domain):
         except:
             pass
 
+        time.sleep(0.5)
+
         # Search 2 — Site specific Google
         try:
             google_url = f"https://www.google.com/search?q=site:{domain}+team+OR+engineers+OR+directors+OR+people+OR+staff+OR+bridge+OR+structural+OR+geotechnical+OR+principal+OR+associate+OR+consultant+OR+civil+OR+BIM+OR+FEA"
@@ -583,6 +584,8 @@ def search_people_via_google(company_name, domain):
             all_text += "\n\n" + text
         except:
             pass
+
+        time.sleep(0.5)
 
         # Search 3 — LinkedIn via Google
         try:
@@ -596,6 +599,8 @@ def search_people_via_google(company_name, domain):
         except:
             pass
 
+        time.sleep(0.5)
+
         # Search 4 — LinkedIn via DuckDuckGo
         try:
             li_ddg = f"https://html.duckduckgo.com/html/?q=site:linkedin.com/in+\"{company_name}\"+engineer+OR+director+OR+structural+OR+bridge+OR+geotechnical+OR+principal+OR+associate+OR+consultant+OR+civil+OR+BIM+OR+FEA"
@@ -606,6 +611,8 @@ def search_people_via_google(company_name, domain):
             all_text += "\n\n" + text
         except:
             pass
+
+        time.sleep(0.5)
 
         # Search 5 — LinkedIn senior roles via Google
         try:
@@ -778,29 +785,35 @@ Active Officers:
 def lookup_linkedin_company(company_name):
     try:
         from bs4 import BeautifulSoup
+        import re
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         }
-        # Search LinkedIn company via Google
-        query = f'site:linkedin.com/company "{company_name}" engineers employees'
-        search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
-        resp = requests.get(search_url, headers=headers, timeout=10)
-        soup = BeautifulSoup(resp.text, "html.parser")
-        for tag in soup(["script", "style"]):
-            tag.decompose()
-        text = soup.get_text(separator="\n", strip=True)
 
-        # Also try DuckDuckGo
-        ddg_url = f"https://html.duckduckgo.com/html/?q=site:linkedin.com/company+\"{company_name}\""
-        resp2 = requests.get(ddg_url, headers=headers, timeout=10)
-        soup2 = BeautifulSoup(resp2.text, "html.parser")
-        results = soup2.find_all("a", class_="result__snippet")
-        text += "\n" + "\n".join([r.get_text() for r in results])
+        try:
+            query = f'site:linkedin.com/company "{company_name}" engineers employees'
+            search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
+            resp = requests.get(search_url, headers=headers, timeout=10)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for tag in soup(["script", "style"]):
+                tag.decompose()
+            text = soup.get_text(separator="\n", strip=True)
+        except:
+            text = ""
 
-        # Extract employee count signal
+        time.sleep(0.5)
+
+        try:
+            ddg_url = f"https://html.duckduckgo.com/html/?q=site:linkedin.com/company+\"{company_name}\""
+            resp2 = requests.get(ddg_url, headers=headers, timeout=10)
+            soup2 = BeautifulSoup(resp2.text, "html.parser")
+            results = soup2.find_all("a", class_="result__snippet")
+            text += "\n" + "\n".join([r.get_text() for r in results])
+        except:
+            pass
+
         employee_signal = 0
-        import re
         matches = re.findall(r'(\d+[\,\d]*)\s*employees', text.lower())
         if matches:
             employee_signal = matches[0].replace(",", "")
@@ -809,7 +822,6 @@ def lookup_linkedin_company(company_name):
     except:
         return "", 0
 
-
 def lookup_glassdoor(company_name, domain):
     try:
         from bs4 import BeautifulSoup
@@ -817,14 +829,10 @@ def lookup_glassdoor(company_name, domain):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         }
-
         all_text = ""
         review_count = 0
-
-        # Extract base domain name for better matching
         base_name = domain.replace("www.", "").split(".")[0]
 
-        # Search 1 — Glassdoor reviews via Google
         try:
             google_url = f"https://www.google.com/search?q=glassdoor+\"{company_name}\"+reviews+engineers+software+tools+employees"
             resp = requests.get(google_url, headers=headers, timeout=10)
@@ -837,7 +845,8 @@ def lookup_glassdoor(company_name, domain):
         except:
             pass
 
-        # Search 2 — Glassdoor via DuckDuckGo with domain
+        time.sleep(0.5)
+
         try:
             ddg_url = f"https://html.duckduckgo.com/html/?q=glassdoor+{base_name}+engineers+reviews+software"
             resp = requests.get(ddg_url, headers=headers, timeout=10)
@@ -849,9 +858,9 @@ def lookup_glassdoor(company_name, domain):
         except:
             pass
 
-        # Search 3 — Direct Glassdoor URL attempt
+        time.sleep(0.5)
+
         try:
-            gd_url = f"https://www.glassdoor.co.uk/Reviews/{base_name}-Reviews-*.htm"
             search_url = f"https://www.google.com/search?q=glassdoor.co.uk+{company_name}+reviews+employee+size+software"
             resp = requests.get(search_url, headers=headers, timeout=10)
             soup = BeautifulSoup(resp.text, "html.parser")
@@ -862,7 +871,8 @@ def lookup_glassdoor(company_name, domain):
         except:
             pass
 
-        # Search 4 — Indeed reviews
+        time.sleep(0.5)
+
         try:
             indeed_url = f"https://html.duckduckgo.com/html/?q=indeed.com+\"{company_name}\"+reviews+engineer+software+tools"
             resp = requests.get(indeed_url, headers=headers, timeout=10)
@@ -874,7 +884,8 @@ def lookup_glassdoor(company_name, domain):
         except:
             pass
 
-        # Search 5 — Employee count specifically
+        time.sleep(0.5)
+
         try:
             size_url = f"https://www.google.com/search?q=\"{company_name}\"+employees+size+headquarters+glassdoor+OR+linkedin+OR+indeed"
             resp = requests.get(size_url, headers=headers, timeout=10)
@@ -887,7 +898,6 @@ def lookup_glassdoor(company_name, domain):
             pass
 
         return all_text[:5000], review_count
-
     except:
         return "", 0
 
@@ -899,24 +909,30 @@ def lookup_planning_portal(company_name):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         }
-        # Search planning applications via Google
-        query = f'"{company_name}" planning application structural engineer site:gov.uk OR site:planningportal.co.uk OR site:localplanning'
-        search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
-        resp = requests.get(search_url, headers=headers, timeout=10)
-        soup = BeautifulSoup(resp.text, "html.parser")
-        for tag in soup(["script", "style"]):
-            tag.decompose()
-        text = soup.get_text(separator="\n", strip=True)
 
-        # Also DuckDuckGo
-        ddg_url = f"https://html.duckduckgo.com/html/?q=\"{company_name}\"+planning+application+structural"
-        resp2 = requests.get(ddg_url, headers=headers, timeout=10)
-        soup2 = BeautifulSoup(resp2.text, "html.parser")
-        results = soup2.find_all("a", class_="result__snippet")
-        text += "\n" + "\n".join([r.get_text() for r in results])
+        try:
+            query = f'"{company_name}" planning application structural engineer site:gov.uk OR site:planningportal.co.uk OR site:localplanning'
+            search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
+            resp = requests.get(search_url, headers=headers, timeout=10)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for tag in soup(["script", "style"]):
+                tag.decompose()
+            text = soup.get_text(separator="\n", strip=True)
+        except:
+            text = ""
+
+        time.sleep(0.5)
+
+        try:
+            ddg_url = f"https://html.duckduckgo.com/html/?q=\"{company_name}\"+planning+application+structural"
+            resp2 = requests.get(ddg_url, headers=headers, timeout=10)
+            soup2 = BeautifulSoup(resp2.text, "html.parser")
+            results = soup2.find_all("a", class_="result__snippet")
+            text += "\n" + "\n".join([r.get_text() for r in results])
+        except:
+            pass
 
         project_count = text.lower().count("planning")
-
         return text[:3000], project_count
     except:
         return "", 0

@@ -513,14 +513,15 @@ def build_corpus(pages):
     return "\n\n---\n\n".join(chunks)[:40000]
 
 # ── AI ────────────────────────────────────────────────────────────────────────
-def ask_deepseek(system, user, max_tokens=2000, temperature=0.1):
-    try:
-        resp = deepseek.chat.completions.create(
-            model="deepseek-chat",
-            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-            temperature=temperature, max_tokens=max_tokens
-        )
-        return resp.choices[0].message.content.strip()
+def ask_deepseek(system, user, max_tokens=2000, temperature=0.1, api_key=None):
+    key = api_key or st.secrets["DEEPSEEK_API_KEY"]
+    client = OpenAI(api_key=key, base_url="https://api.deepseek.com")
+    resp = client.chat.completions.create(
+        model="deepseek-chat",
+        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+        temperature=temperature, max_tokens=max_tokens
+    )
+    return resp.choices[0].message.content.strip()
     except Exception as e:
         st.error(f"DeepSeek API error: {str(e)}")
         return "{}"
@@ -556,6 +557,7 @@ For projects: extract ALL completed or ongoing projects mentioned anywhere on th
 Website content:
 {corpus}""",
         max_tokens=8000
+        api_key=api_key
     )
 
 
@@ -738,7 +740,8 @@ def analyze_sales(corpus, company_json):
 }}
 Company data: {company_json}
 Website excerpt: {corpus[:4000]}""",
-        max_tokens=6000
+        max_tokens=4000
+        api_key=api_key
     )
 
 
@@ -1206,14 +1209,20 @@ with main:
         corpus = build_corpus(pages)
         prog.progress(50)
 
-        stat.caption("🧠 Extracting company profile...")
-        company_raw  = analyze_company(corpus)
-        company_data = safe_json(company_raw)
-        prog.progress(75)
+        stat.caption("🧠 Analysing company and generating strategy in parallel...")
+        from concurrent.futures import ThreadPoolExecutor
+        import functools
 
-        stat.caption("💡 Generating sales strategy...")
-        sales_raw  = analyze_sales(corpus, company_raw)
-        sales_data = safe_json(sales_raw)
+        api_key = st.secrets["DEEPSEEK_API_KEY"]
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_company = executor.submit(analyze_company, corpus, api_key)
+            future_sales   = executor.submit(analyze_sales, corpus, "", api_key)
+            company_raw    = future_company.result()
+            sales_raw      = future_sales.result()
+
+        company_data = safe_json(company_raw)
+        sales_data   = safe_json(sales_raw)
         prog.progress(100)
 
         stat.empty()

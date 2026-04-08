@@ -1179,11 +1179,11 @@ with main:
                 st.markdown('<div class="sec-label">Delivered Projects</div>', unsafe_allow_html=True)
         
                 for proj in projects:
-                    name        = proj.get("name", "Unknown Project").replace('"', '').replace("'", "")
-                    ptype       = proj.get("type", "Other").replace('"', '').replace("'", "")
-                    location    = proj.get("location", "").replace('"', '').replace("'", "")
-                    client      = proj.get("client", "").replace('"', '').replace("'", "")
-                    description = proj.get("description", "").replace('"', '').replace("'", "")
+                    name        = (proj.get("name") or "Unknown Project").replace('"', '').replace("'", "")
+                    ptype       = (proj.get("type") or "Other").replace('"', '').replace("'", "")
+                    location    = (proj.get("location") or "").replace('"', '').replace("'", "")
+                    client      = (proj.get("client") or "").replace('"', '').replace("'", "")
+                    description = (proj.get("description") or "").replace('"', '').replace("'", "")
                     fem         = proj.get("fem_relevant", False)
         
                     fem_html = ""

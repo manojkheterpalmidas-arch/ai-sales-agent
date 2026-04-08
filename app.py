@@ -398,7 +398,6 @@ def direct_fetch(url):
     except:
         return []
 
-
 def fetch_google_cache(url):
     from bs4 import BeautifulSoup
     from urllib.parse import urlparse
@@ -434,6 +433,21 @@ def fetch_google_cache(url):
             continue
 
     return results if results else []
+
+def search_people_via_google(company_name, domain):
+    try:
+        from bs4 import BeautifulSoup
+        query = f'site:{domain} team OR people OR staff engineers'
+        search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+        resp = requests.get(search_url, headers=headers, timeout=10)
+        soup = BeautifulSoup(resp.text, "html.parser")
+        text = soup.get_text(separator="\n", strip=True)
+        return text[:5000]
+    except:
+        return ""
 
 def firecrawl_crawl(url, max_pages=30):
     try:
@@ -1268,7 +1282,30 @@ with main:
         company_raw  = analyze_company(corpus)
         company_data = safe_json(company_raw)
         prog.progress(75)
+        company_data = safe_json(company_raw)
+        prog.progress(75)
 
+        # If no people found, try Google search fallback
+        if len(company_data.get("people", [])) == 0:
+            stat.caption("👥 No people found — searching Google for team info...")
+            google_text = search_people_via_google(
+                company_data.get("company_name", ""),
+                extract_domain(website)
+            )
+            if google_text:
+                people_raw = ask_deepseek(
+                    "You are extracting people from search result text. Return ONLY valid JSON, no markdown. NEVER translate names.",
+                    f"""Extract all named people with their roles from this text. Return JSON:
+{{"people": [{{"name": "Full Name", "role": "Job Title", "tier": "Owner|Founder|Director|Principal|Senior|Engineer|Graduate|Technician|Other"}}]}}
+
+Text:
+{google_text}"""
+                )
+                people_data = safe_json(people_raw)
+                if people_data.get("people"):
+                    company_data["people"] = people_data["people"]
+
+        
         stat.caption("💡 Generating sales strategy...")
         sales_raw  = analyze_sales(corpus, company_raw)
         sales_data = safe_json(sales_raw)

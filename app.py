@@ -5,6 +5,7 @@ import json
 import re
 from supabase import create_client, Client
 from datetime import datetime, timezone, timedelta
+import time
 
 def now_gmt2():
     return datetime.now(timezone.utc) + timedelta(hours=2)

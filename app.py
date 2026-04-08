@@ -1210,20 +1210,14 @@ with main:
         corpus = build_corpus(pages)
         prog.progress(50)
 
-        stat.caption("🧠 Analysing company and generating strategy in parallel...")
-        from concurrent.futures import ThreadPoolExecutor
-        import functools
-
-        api_key = st.secrets["DEEPSEEK_API_KEY"]
-
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            future_company = executor.submit(analyze_company, corpus, api_key)
-            future_sales   = executor.submit(analyze_sales, corpus, "", api_key)
-            company_raw    = future_company.result()
-            sales_raw      = future_sales.result()
-
+        stat.caption("🧠 Extracting company profile...")
+        company_raw  = analyze_company(corpus)
         company_data = safe_json(company_raw)
-        sales_data   = safe_json(sales_raw)
+        prog.progress(75)
+
+        stat.caption("💡 Generating sales strategy...")
+        sales_raw  = analyze_sales(corpus, company_raw)
+        sales_data = safe_json(sales_raw)
         prog.progress(100)
 
         stat.empty()

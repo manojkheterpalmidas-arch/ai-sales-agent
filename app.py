@@ -1196,7 +1196,8 @@ with main:
                             st.markdown(f"<div style='font-weight:600;font-size:14px;padding-top:4px;'>{name}</div>", unsafe_allow_html=True)
                             st.markdown(f"<div style='font-size:12px;color:#888;font-family:\"JetBrains Mono\",monospace;'>{role}</div>", unsafe_allow_html=True)
                         with pc3:
-                            st.markdown(f"<a href='{li_url(name)}' target='_blank' style='font-family:\"JetBrains Mono\",monospace;font-size:11px;color:#c8471e;text-decoration:none;border:1px solid rgba(200,71,30,0.4);padding:5px 12px;border-radius:4px;white-space:nowrap;'>LinkedIn ↗</a>", unsafe_allow_html=True)
+                            safe_name = name.replace("'", "%27")
+                            st.markdown(f'<a href="{li_url(safe_name)}" target="_blank" style="font-family:JetBrains Mono,monospace;font-size:11px;color:#c8471e;text-decoration:none;border:1px solid rgba(200,71,30,0.4);padding:5px 12px;border-radius:4px;white-space:nowrap;">LinkedIn ↗</a>', unsafe_allow_html=True)
                     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
             else:
                 st.info("No people identified. The site may not have a public team page.")

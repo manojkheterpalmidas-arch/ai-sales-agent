@@ -1590,6 +1590,8 @@ with main:
         else:
             pages = firecrawl_crawl(website)
         
+            st.write(f"Pages: {len(pages)}, First page length: {len(pages[0].get('markdown','')) if pages else 0}")
+        
         if not pages or all(len(p.get("markdown", "")) < 500 for p in pages):
             st.warning("⚠ This site uses a JavaScript cookie wall that blocks automated crawling.")
 

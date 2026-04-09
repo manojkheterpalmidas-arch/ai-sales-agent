@@ -108,17 +108,17 @@ def delete_from_history(domain):
 #     st.markdown("""
 #     <style>
 #     @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700&family=JetBrains+Mono:wght@400&display=swap');
-#     html, body, [class*="css"] { background: #f7f6f2 !important; font-family: 'Syne', sans-serif; }
-#     .stApp { background: #f7f6f2 !important; }
+#     html, body, [class*="css"] { background: #ffffff !important; font-family: 'Syne', sans-serif; }
+#     .stApp { background: #ffffff !important; }
 #     .stTextInput > div > div > input {
 #         background: white !important; color: #111 !important;
 #         border: 1.5px solid #ddd !important; border-radius: 6px !important;
 #         font-family: 'JetBrains Mono', monospace !important;
 #         font-size: 22px !important; letter-spacing: 0.4em !important;
 #         text-align: center !important; padding: 14px !important;
-#         caret-color: #c8471e !important;
+#         caret-color: #1a1a1a !important;
 #     }
-#     .stTextInput > div > div > input:focus { border-color: #c8471e !important; box-shadow: 0 0 0 3px rgba(200,71,30,0.1) !important; }
+#     .stTextInput > div > div > input:focus { border-color: #1a1a1a !important; box-shadow: 0 0 0 3px rgba(37,99,235,0.1) !important; }
 #     .stButton > button {
 #         background: #111 !important; color: white !important;
 #         border: none !important; border-radius: 6px !important;
@@ -126,7 +126,7 @@ def delete_from_history(domain):
 #         font-size: 13px !important; letter-spacing: 0.1em !important;
 #         text-transform: uppercase !important; padding: 11px 28px !important;
 #     }
-#     .stButton > button:hover { background: #c8471e !important; color: white !important; }
+#     .stButton > button:hover { background: #1a1a1a !important; color: white !important; }
 #     div[data-testid="stButton"] > button > div > p,
 #     div[data-testid="stButton"] button p,
 #     div[data-testid="stButton"] button span,
@@ -139,9 +139,9 @@ def delete_from_history(domain):
 #     with c2:
 #         st.markdown("""
 #         <div style='text-align:center;margin-bottom:32px;'>
-#             <div style='font-family:Syne,sans-serif;font-size:11px;letter-spacing:0.3em;color:#c8471e;text-transform:uppercase;margin-bottom:6px;'>MIDAS IT</div>
-#             <div style='font-family:Syne,sans-serif;font-size:32px;font-weight:700;color:#111;'>Sales Intelligence</div>
-#             <div style='width:32px;height:3px;background:#c8471e;margin:12px auto 0;'></div>
+#             <div style='font-family:Inter,sans-serif;font-size:11px;letter-spacing:0.3em;color:#1a1a1a;text-transform:uppercase;margin-bottom:6px;'>MIDAS IT</div>
+#             <div style='font-family:Inter,sans-serif;font-size:32px;font-weight:700;color:#1a1a1a;'>Sales Intelligence</div>
+#             <div style='width:32px;height:3px;background:#1a1a1a;margin:12px auto 0;'></div>
 #         </div>
 #         """, unsafe_allow_html=True)
 #         code = st.text_input("", type="password", placeholder="· · · ·", label_visibility="collapsed")
@@ -159,143 +159,140 @@ st.set_page_config(page_title="MIDAS Pre Sales Intelligence", layout="wide", pag
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700&family=JetBrains+Mono:wght@400;500&family=Barlow:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
-html, body, [class*="css"] { font-family: 'Barlow', sans-serif !important; background: #f7f6f2 !important; color: #111 !important; }
-.stApp { background: #f7f6f2 !important; }
-.stApp, .stApp * { color: #111 !important; }
+html, body, [class*="css"] { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important; background: #ffffff !important; color: #1a1a1a !important; }
+.stApp { background: #ffffff !important; }
+.stApp, .stApp * { color: #1a1a1a !important; }
 .stApp .stButton button,
 .stApp .stButton button *,
 .stApp div[data-testid="stButton"] button,
 .stApp div[data-testid="stButton"] button * { color: white !important; }
-.stMarkdown, .stMarkdown * { color: #111 !important; }
-.stTabs [data-baseweb="tab-panel"], .stTabs [data-baseweb="tab-panel"] * { color: #111 !important; }
-.streamlit-expanderContent, .streamlit-expanderContent * { color: #111 !important; }
-[data-testid="column"], [data-testid="column"] * { color: #111 !important; }
-[data-testid="stMetricValue"] { color: #c8471e !important; }
-[data-testid="stMetricLabel"] { color: #888 !important; }
+.stMarkdown, .stMarkdown * { color: #1a1a1a !important; }
+.stTabs [data-baseweb="tab-panel"], .stTabs [data-baseweb="tab-panel"] * { color: #1a1a1a !important; }
+.streamlit-expanderContent, .streamlit-expanderContent * { color: #1a1a1a !important; }
+[data-testid="column"], [data-testid="column"] * { color: #1a1a1a !important; }
+[data-testid="stMetricValue"] { color: #1a1a1a !important; }
+[data-testid="stMetricLabel"] { color: #6b7280 !important; }
 .stAlert, .stAlert * { color: inherit !important; }
-.stCaptionContainer, .stCaptionContainer * { color: #888 !important; }
-a { color: #c8471e !important; }
-a:hover { color: #a03518 !important; }
+.stCaptionContainer, .stCaptionContainer * { color: #6b7280 !important; }
+a { color: #2563eb !important; }
+a:hover { color: #1d4ed8 !important; }
 #MainMenu, footer { visibility: hidden; }
-.block-container { padding: 2rem 2rem 4rem !important; max-width: 1400px !important; }
+.block-container { padding: 2rem 2.5rem 4rem !important; max-width: 1400px !important; }
 
 .stButton > button {
-    background: #111 !important; color: white !important; border: none !important;
-    border-radius: 6px !important; font-family: 'Syne', sans-serif !important;
-    font-weight: 700 !important; font-size: 13px !important; letter-spacing: 0.1em !important;
-    text-transform: uppercase !important; padding: 11px 28px !important;
+    background: #1a1a1a !important; color: white !important; border: none !important;
+    border-radius: 8px !important; font-family: 'Inter', sans-serif !important;
+    font-weight: 600 !important; font-size: 13px !important; letter-spacing: 0.02em !important;
+    padding: 10px 24px !important; transition: all 0.15s ease !important;
 }
-.stButton > button:hover { background: #c8471e !important; }
+.stButton > button:hover { background: #374151 !important; }
 
 .stDownloadButton > button {
-    background: transparent !important; color: #c8471e !important;
-    border: 1.5px solid #c8471e !important; border-radius: 6px !important;
-    font-family: 'Syne', sans-serif !important; font-weight: 700 !important;
-    font-size: 12px !important; letter-spacing: 0.1em !important; text-transform: uppercase !important;
+    background: transparent !important; color: #1a1a1a !important;
+    border: 1px solid #e5e7eb !important; border-radius: 8px !important;
+    font-family: 'Inter', sans-serif !important; font-weight: 600 !important;
+    font-size: 12px !important;
 }
-.stDownloadButton > button:hover { background: rgba(200,71,30,0.06) !important; }
+.stDownloadButton > button:hover { background: #f9fafb !important; border-color: #d1d5db !important; }
 
 .stTextInput > div > div > input {
-    background: white !important; color: #111 !important;
-    border: 1.5px solid #e0ddd5 !important; border-radius: 8px !important;
-    font-family: 'JetBrains Mono', monospace !important; font-size: 14px !important;
-    padding: 11px 14px !important; caret-color: #c8471e !important;
+    background: #ffffff !important; color: #1a1a1a !important;
+    border: 1px solid #e5e7eb !important; border-radius: 8px !important;
+    font-family: 'Inter', sans-serif !important; font-size: 14px !important;
+    padding: 11px 14px !important;
 }
-.stTextInput > div > div > input:focus { border-color: #c8471e !important; box-shadow: 0 0 0 3px rgba(200,71,30,0.1) !important; }
-.stTextInput > div > div > input::placeholder { color: #bbb !important; }
+.stTextInput > div > div > input:focus { border-color: #2563eb !important; box-shadow: 0 0 0 3px rgba(37,99,235,0.1) !important; }
+.stTextInput > div > div > input::placeholder { color: #9ca3af !important; }
 
 .stTextArea > div > div > textarea {
-    background: white !important; color: #111 !important;
-    border: 1.5px solid #e0ddd5 !important; border-radius: 8px !important;
-    font-family: 'Barlow', sans-serif !important; font-size: 14px !important;
-    padding: 11px 14px !important; caret-color: #c8471e !important;
+    background: #ffffff !important; color: #1a1a1a !important;
+    border: 1px solid #e5e7eb !important; border-radius: 8px !important;
+    font-family: 'Inter', sans-serif !important; font-size: 14px !important;
+    padding: 11px 14px !important;
 }
-.stTextArea > div > div > textarea:focus { border-color: #c8471e !important; box-shadow: 0 0 0 3px rgba(200,71,30,0.1) !important; }
+.stTextArea > div > div > textarea:focus { border-color: #2563eb !important; box-shadow: 0 0 0 3px rgba(37,99,235,0.1) !important; }
 
 [data-testid="metric-container"] {
-    background: white !important; border: 1px solid #e8e4dc !important;
-    border-radius: 8px !important; padding: 16px 20px !important;
+    background: #ffffff !important; border: 1px solid #f3f4f6 !important;
+    border-radius: 10px !important; padding: 16px 20px !important;
 }
-[data-testid="stMetricValue"] { font-family: 'Syne', sans-serif !important; font-size: 28px !important; font-weight: 700 !important; color: #c8471e !important; }
-[data-testid="stMetricLabel"] { font-family: 'JetBrains Mono', monospace !important; font-size: 10px !important; letter-spacing: 0.1em !important; color: #888 !important; text-transform: uppercase !important; }
+[data-testid="stMetricValue"] { font-family: 'Inter', sans-serif !important; font-size: 28px !important; font-weight: 700 !important; color: #1a1a1a !important; }
+[data-testid="stMetricLabel"] { font-family: 'Inter', sans-serif !important; font-size: 11px !important; letter-spacing: 0.05em !important; color: #6b7280 !important; text-transform: uppercase !important; }
 
-.stTabs [data-baseweb="tab-list"] { background: transparent !important; border-bottom: 2px solid #e8e4dc !important; gap: 0 !important; }
+.stTabs [data-baseweb="tab-list"] { background: transparent !important; border-bottom: 1px solid #f3f4f6 !important; gap: 0 !important; }
 .stTabs [data-baseweb="tab"] {
-    font-family: 'Syne', sans-serif !important; font-size: 12px !important; font-weight: 700 !important;
-    letter-spacing: 0.1em !important; text-transform: uppercase !important; color: #999 !important;
+    font-family: 'Inter', sans-serif !important; font-size: 13px !important; font-weight: 500 !important;
+    color: #9ca3af !important;
     padding: 10px 20px !important; background: transparent !important; border: none !important;
-    border-bottom: 2px solid transparent !important; margin-bottom: -2px !important;
+    border-bottom: 2px solid transparent !important; margin-bottom: -1px !important;
 }
-.stTabs [aria-selected="true"] { color: #c8471e !important; border-bottom-color: #c8471e !important; }
+.stTabs [aria-selected="true"] { color: #1a1a1a !important; border-bottom-color: #1a1a1a !important; }
 .stTabs [data-baseweb="tab-panel"] { padding-top: 24px !important; }
 
-.stProgress > div > div > div { background: #c8471e !important; border-radius: 2px !important; }
-.stProgress > div > div { background: #e8e4dc !important; border-radius: 2px !important; }
+.stProgress > div > div > div { background: #1a1a1a !important; border-radius: 2px !important; }
+.stProgress > div > div { background: #f3f4f6 !important; border-radius: 2px !important; }
 
 .streamlit-expanderHeader {
-    background: white !important; border: 1px solid #e8e4dc !important; border-radius: 6px !important;
-    font-family: 'Syne', sans-serif !important; font-size: 12px !important; font-weight: 700 !important;
-    letter-spacing: 0.08em !important; text-transform: uppercase !important; color: #555 !important;
+    background: #ffffff !important; border: 1px solid #f3f4f6 !important; border-radius: 8px !important;
+    font-family: 'Inter', sans-serif !important; font-size: 13px !important; font-weight: 600 !important;
+    color: #374151 !important;
 }
-.stSuccess, .stInfo, .stWarning, .stError { border-radius: 6px !important; font-family: 'Barlow', sans-serif !important; font-size: 14px !important; }
+.stSuccess, .stInfo, .stWarning, .stError { border-radius: 8px !important; font-family: 'Inter', sans-serif !important; font-size: 14px !important; }
 ::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-thumb { background: #ddd; border-radius: 2px; }
+::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 2px; }
 
 .sec-label {
-    font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500;
-    letter-spacing: 0.2em; text-transform: uppercase; color: #c8471e; margin-bottom: 12px;
+    font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase; color: #6b7280; margin-bottom: 12px;
     display: flex; align-items: center; gap: 10px;
 }
-.sec-label::after { content:''; flex:1; height:1px; background:#e8e4dc; }
+.sec-label::after { content:''; flex:1; height:1px; background:#f3f4f6; }
 
 .insight-card {
-    background: white; border: 1px solid #e8e4dc; border-left: 3px solid #c8471e;
-    border-radius: 6px; padding: 14px 18px; margin-bottom: 10px;
-    font-size: 14px; line-height: 1.7; color: #222;
+    background: #ffffff; border: 1px solid #f3f4f6; border-left: 3px solid #1a1a1a;
+    border-radius: 8px; padding: 14px 18px; margin-bottom: 10px;
+    font-size: 14px; line-height: 1.7; color: #374151;
 }
 .signal-card {
-    background: white; border: 1px solid #e8e4dc; border-radius: 6px;
-    padding: 12px 16px; margin-bottom: 8px; font-size: 13px; line-height: 1.6; color: #333;
+    background: #ffffff; border: 1px solid #f3f4f6; border-radius: 8px;
+    padding: 12px 16px; margin-bottom: 8px; font-size: 13px; line-height: 1.6; color: #374151;
 }
 .av {
-    width: 38px; height: 38px; border-radius: 50%; background: #111; color: white;
+    width: 38px; height: 38px; border-radius: 50%; background: #1a1a1a; color: white;
     display: inline-flex; align-items: center; justify-content: center;
-    font-family: 'Syne', sans-serif; font-size: 12px; font-weight: 700; flex-shrink: 0;
+    font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600; flex-shrink: 0;
 }
-.pill-tag { display: inline-block; font-family: 'JetBrains Mono', monospace; font-size: 10px; padding: 3px 9px; border: 1px solid #e0ddd5; border-radius: 20px; color: #888; margin: 2px; }
-.pill-red   { border-color: rgba(200,71,30,0.4); color: #c8471e; background: rgba(200,71,30,0.05); }
-.pill-amber { border-color: rgba(200,140,0,0.4); color: #8a5e00; background: rgba(200,140,0,0.05); }
-.score-hot  { background: #fef0ed; color: #c8471e; border: 1px solid rgba(200,71,30,0.3); }
-.score-warm { background: #fffbf0; color: #996600; border: 1px solid rgba(200,140,0,0.3); }
-.score-cold { background: #f5f5f5; color: #666; border: 1px solid #ddd; }
+.pill-tag { display: inline-block; font-family: 'Inter', sans-serif; font-size: 11px; padding: 3px 10px; border: 1px solid #e5e7eb; border-radius: 20px; color: #6b7280; margin: 2px; }
+.pill-red   { border-color: #fecaca; color: #dc2626; background: #fef2f2; }
+.pill-amber { border-color: #fde68a; color: #d97706; background: #fffbeb; }
+.score-hot  { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+.score-warm { background: #fffbeb; color: #d97706; border: 1px solid #fde68a; }
+.score-cold { background: #f9fafb; color: #6b7280; border: 1px solid #e5e7eb; }
 .score-badge {
-    display: inline-block; font-family: 'Syne', sans-serif; font-weight: 700;
-    font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; padding: 6px 16px; border-radius: 20px;
+    display: inline-block; font-family: 'Inter', sans-serif; font-weight: 600;
+    font-size: 12px; letter-spacing: 0.02em; text-transform: uppercase; padding: 6px 16px; border-radius: 20px;
 }
 
 .stApp [data-testid="stFormSubmitButton"] button,
 .stApp [data-testid="stFormSubmitButton"] button * {
     color: white !important;
-    font-family: 'Syne', sans-serif !important;
-    font-weight: 700 !important;
+    font-family: 'Inter', sans-serif !important;
+    font-weight: 600 !important;
 }
 [data-testid="stFormSubmitButton"] button {
-    background: #111 !important;
+    background: #1a1a1a !important;
     color: white !important;
     border: none !important;
-    border-radius: 6px !important;
-    font-family: 'Syne', sans-serif !important;
-    font-weight: 700 !important;
+    border-radius: 8px !important;
+    font-family: 'Inter', sans-serif !important;
+    font-weight: 600 !important;
     font-size: 13px !important;
-    letter-spacing: 0.1em !important;
-    text-transform: uppercase !important;
-    padding: 11px 28px !important;
+    padding: 10px 24px !important;
 }
 [data-testid="stFormSubmitButton"] button:hover {
-    background: #c8471e !important;
-}
+    background: #374151 !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -1524,11 +1521,11 @@ col_logo, col_user = st.columns([6, 1])
 with col_logo:
     st.markdown("""
     <div style='display:flex;align-items:center;gap:12px;padding:4px 0 20px;'>
-        <div style='font-family:Syne,sans-serif;font-size:20px;font-weight:700;color:#111;letter-spacing:0.05em;'>
-            MIDAS <span style='color:#c8471e;'> </span> PRESALES INTEL
+        <div style='font-family:Inter,sans-serif;font-size:20px;font-weight:700;color:#1a1a1a;letter-spacing:0.05em;'>
+            MIDAS <span style='color:#1a1a1a;'> </span> PRESALES INTEL
         </div>
-        <div style='font-family:"JetBrains Mono",monospace;font-size:10px;color:#bbb;letter-spacing:0.1em;
-             background:#f0ede6;border:1px solid #e0ddd5;padding:3px 10px;border-radius:20px;'>
+        <div style='font-family:"Inter",sans-serif;font-size:10px;color:#9ca3af;letter-spacing:0.1em;
+             background:#f9fafb;border:1px solid #e5e7eb;padding:3px 10px;border-radius:20px;'>
             SALES INTELLIGENCE
         </div>
     </div>
@@ -1538,8 +1535,8 @@ with col_user:
     credit_display = f"⚡ {credits} credits" if credits is not None else "⚡ —"
     st.markdown(f"""
     <div style='text-align:right;padding-top:4px;'>
-        <div style='font-size:12px;color:#888;font-family:"JetBrains Mono",monospace;'>Manoj | MIDAS IT</div>
-        <div style='font-size:11px;color:#c8471e;font-family:"JetBrains Mono",monospace;margin-top:2px;'>{credit_display}</div>
+        <div style='font-size:12px;color:#6b7280;font-family:"Inter",sans-serif;'>Manoj | MIDAS IT</div>
+        <div style='font-size:11px;color:#1a1a1a;font-family:"Inter",sans-serif;margin-top:2px;'>{credit_display}</div>
     </div>
     """, unsafe_allow_html=True)
     
@@ -1548,9 +1545,9 @@ if not st.session_state.get("firecrawl_key"):
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
     st.markdown('<div class="sec-label">API Configuration</div>', unsafe_allow_html=True)
     st.markdown("""
-    <div style='background:white;border:1px solid #e8e4dc;border-radius:8px;padding:20px 24px;margin-bottom:16px;'>
-        <div style='font-weight:600;font-size:15px;color:#111;margin-bottom:6px;'>Firecrawl API Key Required</div>
-        <div style='font-size:13px;color:#888;'>Each team member uses their own key. Get yours free at
+    <div style='background:white;border:1px solid #f3f4f6;border-radius:8px;padding:20px 24px;margin-bottom:16px;'>
+        <div style='font-weight:600;font-size:15px;color:#1a1a1a;margin-bottom:6px;'>Firecrawl API Key Required</div>
+        <div style='font-size:13px;color:#6b7280;'>Each team member uses their own key. Get yours free at
             <a href='https://www.firecrawl.dev/app/api-keys' target='_blank'>firecrawl.dev/app/api-keys ↗</a>
         </div>
     </div>
@@ -1588,7 +1585,7 @@ with sidebar:
         history = [h for h in history if search_query.lower() in h.get("company", "").lower() or search_query.lower() in h.get("domain", "").lower()]
 
     if not history:
-        st.markdown("<div style='font-size:12px;color:#aaa;font-family:JetBrains Mono,monospace;padding:8px 0;'>No searches yet</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size:12px;color:#9ca3af;font-family:Inter,sans-serif;padding:8px 0;'>No searches yet</div>", unsafe_allow_html=True)
     else:
         for i, h in enumerate(history):
             sc    = h.get("score", "Cold")
@@ -1600,11 +1597,11 @@ with sidebar:
             col_info, col_btn = st.columns([3, 1])
             with col_info:
                 st.markdown(f"""
-                <div style='padding:8px 0;border-bottom:1px solid #f0ede6;'>
-                    <div style='font-size:13px;font-weight:600;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{name}</div>
+                <div style='padding:8px 0;border-bottom:1px solid #f3f4f6;'>
+                    <div style='font-size:13px;font-weight:600;color:#1a1a1a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{name}</div>
                     <div style='display:flex;align-items:center;gap:6px;margin-top:3px;flex-wrap:wrap;'>
                         <span class='score-badge {cls}' style='font-size:9px;padding:2px 8px;'>{emoji} {sc}</span>
-                        <span style='font-size:10px;color:#aaa;font-family:JetBrains Mono,monospace;'>{date}</span>
+                        <span style='font-size:10px;color:#9ca3af;font-family:Inter,sans-serif;'>{date}</span>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -1640,7 +1637,7 @@ if st.session_state.get("confirm_delete"):
             st.rerun()
 
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-    st.markdown("<div style='font-family:JetBrains Mono,monospace;font-size:9px;color:#ccc;'>Powered by Supabase</div>", unsafe_allow_html=True)
+    st.markdown("<div style='font-family:Inter,sans-serif;font-size:9px;color:#ccc;'>Powered by Supabase</div>", unsafe_allow_html=True)
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────
 with main:
@@ -1667,12 +1664,12 @@ with main:
             sc   = existing.get("score", "Cold")
             date = days_ago(existing.get("date", ""))
             st.markdown(f"""
-            <div style='background:#fffbf0;border:1px solid rgba(200,140,0,0.3);border-left:3px solid #c8471e;
+            <div style='background:#fffbeb;border:1px solid #fde68a;border-left:3px solid #1a1a1a;
                  border-radius:8px;padding:14px 18px;margin-bottom:12px;'>
-                <div style='font-family:Syne,sans-serif;font-weight:700;font-size:13px;color:#111;margin-bottom:4px;'>
+                <div style='font-family:Inter,sans-serif;font-weight:700;font-size:13px;color:#1a1a1a;margin-bottom:4px;'>
                     ⚠ Already Researched
                 </div>
-                <div style='font-size:13px;color:#555;'>
+                <div style='font-size:13px;color:#4b5563;'>
                     <b>{existing.get('company', domain)}</b> was last analysed <b>{date}</b> — scored as <b>{score_emoji(sc)} {sc}</b>.
                 </div>
             </div>
@@ -1812,12 +1809,12 @@ with main:
             # Step 5 — Manual paste if everything truly failed
             if needs_fallback:
                 st.markdown("""
-                <div style='background:white;border:1px solid #e8e4dc;border-radius:8px;
+                <div style='background:white;border:1px solid #f3f4f6;border-radius:8px;
                      padding:16px 20px;margin-bottom:12px;'>
-                    <div style='font-weight:600;font-size:14px;color:#111;margin-bottom:8px;'>
+                    <div style='font-weight:600;font-size:14px;color:#1a1a1a;margin-bottom:8px;'>
                         📋 Automatic fetch failed — paste manually:
                     </div>
-                    <div style='font-size:13px;color:#555;line-height:1.8;'>
+                    <div style='font-size:13px;color:#4b5563;line-height:1.8;'>
                         1. Open the website in your browser<br>
                         2. Press <b>Ctrl+A</b> then <b>Ctrl+C</b><br>
                         3. Paste below and click Analyse →
@@ -1923,9 +1920,9 @@ with main:
             st.markdown('<div class="sec-label" style="margin-top:8px;">Additional Sources Used</div>', unsafe_allow_html=True)
             for item in source_summary:
                 st.markdown(f"""
-                <div style='background:#f0ede6;border:1px solid #e8e4dc;border-radius:6px;
-                     padding:6px 14px;margin-bottom:4px;font-family:JetBrains Mono,monospace;
-                     font-size:11px;color:#666;'>
+                <div style='background:#f9fafb;border:1px solid #f3f4f6;border-radius:6px;
+                     padding:6px 14px;margin-bottom:4px;font-family:Inter,sans-serif;
+                     font-size:11px;color:#6b7280;'>
                     {item}
                 </div>
                 """, unsafe_allow_html=True)
@@ -1970,19 +1967,19 @@ with main:
         with hc1:
             st.markdown(f"""
             <div style='margin-bottom:6px;'>
-                <span style='font-family:Syne,sans-serif;font-size:26px;font-weight:700;color:#111;'>{company_name}</span>
+                <span style='font-family:Inter,sans-serif;font-size:26px;font-weight:700;color:#1a1a1a;'>{company_name}</span>
                 &nbsp;&nbsp;
                 <span class='score-badge {score_cls(score)}'>{score_emoji(score)} {score} Lead</span>
             </div>
-            <div style='font-family:"JetBrains Mono",monospace;font-size:11px;color:#888;margin-bottom:6px;'>📍 {locs}</div>
-            <div style='font-family:"JetBrains Mono",monospace;font-size:11px;color:#888;margin-bottom:4px;'>
-                👥 {emp} &nbsp;·&nbsp; Confidence: <b style='color:#c8471e;'>{conf}</b>
+            <div style='font-family:"Inter",sans-serif;font-size:11px;color:#6b7280;margin-bottom:6px;'>📍 {locs}</div>
+            <div style='font-family:"Inter",sans-serif;font-size:11px;color:#6b7280;margin-bottom:4px;'>
+                👥 {emp} &nbsp;·&nbsp; Confidence: <b style='color:#1a1a1a;'>{conf}</b>
             </div>
-            <div style='font-size:12px;color:#aaa;font-style:italic;margin-bottom:6px;'>{conf_reason}</div>
-            <div style='font-size:14px;color:#555;'>{score_reason}</div>
+            <div style='font-size:12px;color:#9ca3af;font-style:italic;margin-bottom:6px;'>{conf_reason}</div>
+            <div style='font-size:14px;color:#4b5563;'>{score_reason}</div>
             """, unsafe_allow_html=True)
         with hc2:
-            st.markdown(f"<div style='text-align:right;font-family:\"JetBrains Mono\",monospace;font-size:11px;color:#bbb;padding-top:8px;'>{now_gmt2().strftime('%d %b %Y %H:%M')}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align:right;font-family:\"Inter\",sans-serif;font-size:11px;color:#9ca3af;padding-top:8px;'>{now_gmt2().strftime('%d %b %Y %H:%M')}</div>", unsafe_allow_html=True)
         st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
         m1, m2, m3, m4, m5 = st.columns(5)
@@ -2010,7 +2007,7 @@ with main:
                 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
                 st.markdown('<div class="sec-label">Engineering Capabilities</div>', unsafe_allow_html=True)
                 for b in company_data.get("engineering_capabilities", ["Not found"]):
-                    st.markdown(f"<div style='padding:8px 0;border-bottom:1px solid #f0ede6;font-size:14px;color:#333;'>◆ {b}</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px;color:#374151;'>◆ {b}</div>", unsafe_allow_html=True)
             with cb:
                 st.markdown('<div class="sec-label">Project Types</div>', unsafe_allow_html=True)
                 pts = company_data.get("project_types", [])
@@ -2048,10 +2045,10 @@ with main:
                             st.markdown(f'<div class="av">{ini(name)}</div>', unsafe_allow_html=True)
                         with pc2:
                             st.markdown(f"<div style='font-weight:600;font-size:14px;padding-top:4px;'>{name}</div>", unsafe_allow_html=True)
-                            st.markdown(f"<div style='font-size:12px;color:#888;font-family:\"JetBrains Mono\",monospace;'>{role}</div>", unsafe_allow_html=True)
+                            st.markdown(f"<div style='font-size:12px;color:#6b7280;font-family:\"Inter\",sans-serif;'>{role}</div>", unsafe_allow_html=True)
                         with pc3:
                             safe_name = name.replace("'", "%27")
-                            st.markdown(f'<a href="{li_url(safe_name)}" target="_blank" style="font-family:JetBrains Mono,monospace;font-size:11px;color:#c8471e;text-decoration:none;border:1px solid rgba(200,71,30,0.4);padding:5px 12px;border-radius:4px;white-space:nowrap;">LinkedIn ↗</a>', unsafe_allow_html=True)
+                            st.markdown(f'<a href="{li_url(safe_name)}" target="_blank" style="font-family:Inter,sans-serif;font-size:11px;color:#1a1a1a;text-decoration:none;border:1px solid rgba(200,71,30,0.4);padding:5px 12px;border-radius:4px;white-space:nowrap;">LinkedIn ↗</a>', unsafe_allow_html=True)
                     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
             else:
                 st.info("No people identified. The site may not have a public team page.")
@@ -2077,10 +2074,10 @@ with main:
         
                     fem_html = ""
                     if fem:
-                        fem_html = '<span style="font-family:JetBrains Mono,monospace;font-size:10px;color:#c8471e;background:rgba(200,71,30,0.08);border:1px solid rgba(200,71,30,0.3);padding:3px 9px;border-radius:20px;white-space:nowrap;margin-left:8px;">FEM RELEVANT</span>'
+                        fem_html = '<span style="font-family:Inter,sans-serif;font-size:10px;color:#1a1a1a;background:rgba(26,26,26,0.06);border:1px solid #fecaca;padding:3px 9px;border-radius:20px;white-space:nowrap;margin-left:8px;">FEM RELEVANT</span>'
         
                     type_colors = {
-                        "Bridge":         ("rgba(200,71,30,0.05)",  "rgba(200,71,30,0.4)",  "#c8471e"),
+                        "Bridge":         ("rgba(26,26,26,0.04)",  "rgba(26,26,26,0.2)",   "#1a1a1a"),
                         "Metro":          ("rgba(0,100,200,0.05)",  "rgba(0,100,200,0.4)",  "#0055cc"),
                         "Building":       ("rgba(0,168,90,0.05)",   "rgba(0,168,90,0.4)",   "#00784a"),
                         "Infrastructure": ("rgba(200,140,0,0.05)",  "rgba(200,140,0,0.4)",  "#8a5e00"),
@@ -2106,16 +2103,16 @@ with main:
                     meta_html = "&nbsp;&nbsp;·&nbsp;&nbsp;".join(meta_parts)
         
                     card = (
-                        '<div style="background:white;border:1px solid #e8e4dc;border-radius:8px;padding:16px 20px;margin-bottom:10px;">'
+                        '<div style="background:white;border:1px solid #f3f4f6;border-radius:8px;padding:16px 20px;margin-bottom:10px;">'
                         '<div style="display:flex;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">'
-                        f'<div style="font-weight:600;font-size:15px;color:#111;">{name}</div>'
+                        f'<div style="font-weight:600;font-size:15px;color:#1a1a1a;">{name}</div>'
                         + fem_html +
-                        f'<span style="font-family:JetBrains Mono,monospace;font-size:10px;padding:3px 10px;'
+                        f'<span style="font-family:Inter,sans-serif;font-size:10px;padding:3px 10px;'
                         f'background:{bg};border:1px solid {border};border-radius:20px;color:{color};">'
                         f'{ptype}</span>'
                         '</div>'
-                        f'<div style="font-size:12px;color:#aaa;font-family:JetBrains Mono,monospace;margin-bottom:6px;">{meta_html}</div>'
-                        f'<div style="font-size:13px;color:#555;line-height:1.6;">{description}</div>'
+                        f'<div style="font-size:12px;color:#9ca3af;font-family:Inter,sans-serif;margin-bottom:6px;">{meta_html}</div>'
+                        f'<div style="font-size:13px;color:#4b5563;line-height:1.6;">{description}</div>'
                         '</div>'
                     )
                     st.markdown(card, unsafe_allow_html=True)
@@ -2129,7 +2126,7 @@ with main:
             with fa:
                 st.markdown('<div class="sec-label">FEM / FEA Opportunities</div>', unsafe_allow_html=True)
                 for i, opp in enumerate(sales_data.get("fem_opportunities", ["None identified"]), 1):
-                    st.markdown(f'<div class="insight-card"><span style=\'font-family:"JetBrains Mono",monospace;font-size:10px;color:#c8471e;\'>0{i}</span><br>{opp}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="insight-card"><span style=\'font-family:"Inter",sans-serif;font-size:10px;color:#1a1a1a;\'>0{i}</span><br>{opp}</div>', unsafe_allow_html=True)
             with fb:
                 st.markdown('<div class="sec-label">Hiring Signals</div>', unsafe_allow_html=True)
                 for s in sales_data.get("hiring_signals", []):
@@ -2148,7 +2145,7 @@ with main:
                 st.success(sales_data.get("value_positioning", "Not determined"))
                 st.markdown('<div class="sec-label" style="margin-top:16px;">Likely Objections</div>', unsafe_allow_html=True)
                 for obj in sales_data.get("likely_objections", []):
-                    st.markdown(f'<div class="insight-card" style="border-left-color:#e05c2a;">⚠ {obj}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="insight-card" style="border-left-color:#d97706;">⚠ {obj}</div>', unsafe_allow_html=True)
                     
                 st.markdown('<div class="sec-label" style="margin-top:16px;">Recommended MIDAS Products</div>', unsafe_allow_html=True)
                 products = sales_data.get("recommended_products", [])
@@ -2157,22 +2154,22 @@ with main:
                     pills = " ".join(f'<span class="pill-tag pill-red">{p}</span>' for p in products)
                     st.markdown(f"<div style='margin-bottom:8px;'>{pills}</div>", unsafe_allow_html=True)
                 if product_reason:
-                    st.markdown(f"<div style='font-size:13px;color:#555;'>{product_reason}</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='font-size:13px;color:#4b5563;'>{product_reason}</div>", unsafe_allow_html=True)
                     
             with sb:
                 st.markdown('<div class="sec-label">Pre-Meeting Cheat Sheet</div>', unsafe_allow_html=True)
-                st.markdown("<div style='font-size:11px;color:#888;font-family:\"JetBrains Mono\",monospace;letter-spacing:0.1em;margin-bottom:8px;'>3 THINGS TO MENTION</div>", unsafe_allow_html=True)
+                st.markdown("<div style='font-size:11px;color:#6b7280;font-family:\"Inter\",sans-serif;letter-spacing:0.1em;margin-bottom:8px;'>3 THINGS TO MENTION</div>", unsafe_allow_html=True)
                 for m in sales_data.get("pre_meeting_mention", []):
-                    st.markdown(f"<div style='padding:8px 0;border-bottom:1px solid #f0ede6;font-size:14px;'>✓ {m}</div>", unsafe_allow_html=True)
-                st.markdown("<div style='font-size:11px;color:#888;font-family:\"JetBrains Mono\",monospace;letter-spacing:0.1em;margin:20px 0 8px;'>3 SMART QUESTIONS</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px;'>✓ {m}</div>", unsafe_allow_html=True)
+                st.markdown("<div style='font-size:11px;color:#6b7280;font-family:\"Inter\",sans-serif;letter-spacing:0.1em;margin:20px 0 8px;'>3 SMART QUESTIONS</div>", unsafe_allow_html=True)
                 for q in sales_data.get("smart_questions", []):
-                    st.markdown(f"<div style='padding:8px 0;border-bottom:1px solid #f0ede6;font-size:14px;'>? {q}</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px;'>? {q}</div>", unsafe_allow_html=True)
                 st.markdown('<div class="sec-label" style="margin-top:24px;">Opening Line</div>', unsafe_allow_html=True)
                 opening = sales_data.get("opening_line", "")
                 if opening:
-                    st.markdown(f'''<div style="background:white;border:1px solid #e8e4dc;border-left:3px solid #c8471e;border-radius:8px;padding:24px 28px;font-size:15px;line-height:1.8;font-style:italic;position:relative;">
-                        <span style="font-family:Syne,sans-serif;font-size:64px;font-weight:700;color:rgba(200,71,30,0.25);position:absolute;top:-8px;left:14px;line-height:1;">"</span>
-                        <span style="color:#333;display:block;padding-left:20px;">{opening}</span>
+                    st.markdown(f'''<div style="background:white;border:1px solid #f3f4f6;border-left:3px solid #1a1a1a;border-radius:8px;padding:24px 28px;font-size:15px;line-height:1.8;font-style:italic;position:relative;">
+                        <span style="font-family:Inter,sans-serif;font-size:64px;font-weight:700;color:rgba(26,26,26,0.15);position:absolute;top:-8px;left:14px;line-height:1;">"</span>
+                        <span style="color:#374151;display:block;padding-left:20px;">{opening}</span>
                     </div>''', unsafe_allow_html=True)
 
         # TAB 6 ── VACANCIES
@@ -2187,12 +2184,12 @@ with main:
                     title     = role.get("title", "Unknown role")
                     skills    = role.get("skills", [])
                     fem       = role.get("fem_mentioned", False)
-                    fem_html  = '<span style="font-family:JetBrains Mono,monospace;font-size:10px;color:#c8471e;background:rgba(200,71,30,0.08);border:1px solid rgba(200,71,30,0.3);padding:3px 9px;border-radius:20px;white-space:nowrap;">FEM MENTIONED</span>' if fem else ""
-                    pills_html = "".join(f'<span style="font-family:JetBrains Mono,monospace;font-size:10px;padding:3px 10px;border:1px solid #e0ddd5;border-radius:20px;color:#666;background:#faf9f6;margin:2px;display:inline-block;">{s}</span>' for s in skills) if skills else '<span style="font-size:12px;color:#aaa;">No skills listed</span>'
+                    fem_html  = '<span style="font-family:Inter,sans-serif;font-size:10px;color:#1a1a1a;background:rgba(26,26,26,0.06);border:1px solid #fecaca;padding:3px 9px;border-radius:20px;white-space:nowrap;">FEM MENTIONED</span>' if fem else ""
+                    pills_html = "".join(f'<span style="font-family:Inter,sans-serif;font-size:10px;padding:3px 10px;border:1px solid #e5e7eb;border-radius:20px;color:#6b7280;background:#fafafa;margin:2px;display:inline-block;">{s}</span>' for s in skills) if skills else '<span style="font-size:12px;color:#9ca3af;">No skills listed</span>'
                     st.markdown(
-                        f'<div style="background:white;border:1px solid #e8e4dc;border-radius:8px;padding:16px 20px;margin-bottom:10px;">'
+                        f'<div style="background:white;border:1px solid #f3f4f6;border-radius:8px;padding:16px 20px;margin-bottom:10px;">'
                         f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'
-                        f'<div style="font-weight:600;font-size:15px;color:#111;">{title}</div>{fem_html}</div>'
+                        f'<div style="font-weight:600;font-size:15px;color:#1a1a1a;">{title}</div>{fem_html}</div>'
                         f'<div style="display:flex;flex-wrap:wrap;gap:6px;">{pills_html}</div></div>',
                         unsafe_allow_html=True
                     )
@@ -2202,7 +2199,7 @@ with main:
         # TAB 7 ── EMAIL
         with t7:
             st.markdown('<div class="sec-label">Cold Outreach Email</div>', unsafe_allow_html=True)
-            st.markdown("<div style='background:white;border:1px solid #e8e4dc;border-radius:8px;padding:16px 20px;margin-bottom:16px;font-size:13px;color:#888;'>Generate a personalised cold email based on the company intelligence. Edit before sending.</div>", unsafe_allow_html=True)
+            st.markdown("<div style='background:white;border:1px solid #f3f4f6;border-radius:8px;padding:16px 20px;margin-bottom:16px;font-size:13px;color:#6b7280;'>Generate a personalised cold email based on the company intelligence. Edit before sending.</div>", unsafe_allow_html=True)
 
             current_domain = active_domain
             if st.session_state.get("email_domain") != current_domain:
@@ -2225,10 +2222,10 @@ with main:
                 body = "\n".join(body_lines).strip()
 
                 if subject:
-                    st.markdown("<div style='font-family:JetBrains Mono,monospace;font-size:11px;color:#888;margin-bottom:4px;letter-spacing:0.1em;'>SUBJECT LINE</div>", unsafe_allow_html=True)
-                    st.markdown(f"<div style='background:white;border:1px solid #e8e4dc;border-radius:6px;padding:10px 14px;font-size:14px;font-weight:600;color:#111;margin-bottom:16px;'>{subject}</div>", unsafe_allow_html=True)
+                    st.markdown("<div style='font-family:Inter,sans-serif;font-size:11px;color:#6b7280;margin-bottom:4px;letter-spacing:0.1em;'>SUBJECT LINE</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='background:white;border:1px solid #f3f4f6;border-radius:6px;padding:10px 14px;font-size:14px;font-weight:600;color:#1a1a1a;margin-bottom:16px;'>{subject}</div>", unsafe_allow_html=True)
 
-                st.markdown("<div style='font-family:JetBrains Mono,monospace;font-size:11px;color:#888;margin-bottom:4px;letter-spacing:0.1em;'>EMAIL BODY — edit below before copying</div>", unsafe_allow_html=True)
+                st.markdown("<div style='font-family:Inter,sans-serif;font-size:11px;color:#6b7280;margin-bottom:4px;letter-spacing:0.1em;'>EMAIL BODY — edit below before copying</div>", unsafe_allow_html=True)
                 edited_email = st.text_area("", value=body, height=320, label_visibility="collapsed")
                 full_copy = f"Subject: {subject}\n\n{edited_email}" if subject else edited_email
                 st.download_button("📋 Download as .txt", data=full_copy, file_name=f"MIDAS_Email_{company_name.replace(' ','_')}.txt", mime="text/plain")
@@ -2238,7 +2235,7 @@ with main:
             ea, eb = st.columns([1, 1])
             with ea:
                 st.markdown('<div class="sec-label">PDF Export</div>', unsafe_allow_html=True)
-                st.markdown("<div style='background:white;border:1px solid #e8e4dc;border-radius:8px;padding:20px 24px;margin-bottom:16px;'><div style='font-weight:600;font-size:15px;color:#111;margin-bottom:6px;'>PDF Sales Dossier</div><div style='font-size:13px;color:#888;'>Ready to print or share before a meeting.</div></div>", unsafe_allow_html=True)
+                st.markdown("<div style='background:white;border:1px solid #f3f4f6;border-radius:8px;padding:20px 24px;margin-bottom:16px;'><div style='font-weight:600;font-size:15px;color:#1a1a1a;margin-bottom:6px;'>PDF Sales Dossier</div><div style='font-size:13px;color:#6b7280;'>Ready to print or share before a meeting.</div></div>", unsafe_allow_html=True)
                 pdf_bytes = export_pdf(company_name, company_data, sales_data)
                 fname = f"MIDAS_Intel_{company_name.replace(' ','_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
                 st.download_button("📥  Download PDF", data=pdf_bytes, file_name=fname, mime="application/pdf")

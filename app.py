@@ -1552,6 +1552,11 @@ with main:
         if not website.startswith("http"):
             website = "https://" + website
 
+        # Clear old report data immediately when running fresh analysis
+        for key in ["loaded_report", "generated_email", "email_domain"]:
+            if key in st.session_state:
+                del st.session_state[key]
+
         active_domain = extract_domain(website)
 
         prog = st.progress(0)

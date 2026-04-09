@@ -378,7 +378,7 @@ def firecrawl_multi_scrape(base_url):
     return results
 
 
-def direct_fetch(url):
+def direct_fetch(url, max_subpages=14):
     try:
         from bs4 import BeautifulSoup
         from urllib.parse import urljoin, urlparse
@@ -400,9 +400,13 @@ def direct_fetch(url):
         else:
             results = []
 
-        # Also try to find and fetch subpages
+        # Find and prioritise subpages
         domain = urlparse(url).netloc
         visited = {url}
+        priority_keywords = ["people","team","our-team","staff","leadership","directors","who-we-are",
+                             "about","careers","jobs","vacancies","join","projects","services",
+                             "what-we-do","contact","expertise","our-expertise","sectors","capabilities"]
+        all_links = []
         for a in soup.find_all("a", href=True):
             href = a["href"].strip()
             full = urljoin(url, href)
@@ -411,17 +415,29 @@ def direct_fetch(url):
                 "#" not in full and
                 full not in visited and
                 not any(full.endswith(ext) for ext in [".pdf",".jpg",".png",".zip"])):
+                all_links.append(full)
                 visited.add(full)
-                try:
-                    sub = requests.get(full, headers=headers, timeout=10)
-                    sub_soup = BeautifulSoup(sub.text, "html.parser")
-                    for tag in sub_soup(["script", "style", "noscript", "iframe"]):
-                        tag.decompose()
-                    sub_text = sub_soup.get_text(separator="\n", strip=True)
-                    if len(sub_text) > 200:
-                        results.append({"url": full, "markdown": sub_text})
-                except:
-                    pass
+
+        def priority_score(link):
+            lower = link.lower()
+            for i, kw in enumerate(priority_keywords):
+                if kw in lower:
+                    return i
+            return 999
+
+        sorted_links = sorted(set(all_links), key=priority_score)
+
+        for link in sorted_links[:max_subpages]:
+            try:
+                sub = requests.get(link, headers=headers, timeout=10)
+                sub_soup = BeautifulSoup(sub.text, "html.parser")
+                for tag in sub_soup(["script", "style", "noscript", "iframe"]):
+                    tag.decompose()
+                sub_text = sub_soup.get_text(separator="\n", strip=True)
+                if len(sub_text) > 200:
+                    results.append({"url": link, "markdown": sub_text})
+            except:
+                pass
         return results
     except:
         return []

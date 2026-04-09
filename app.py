@@ -1349,11 +1349,11 @@ def export_pdf(company, cd, sd):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=20*mm, rightMargin=20*mm, topMargin=20*mm, bottomMargin=20*mm)
 
-    INK      = colors.HexColor("#111111")
-    ACCENT   = colors.HexColor("#c8471e")
-    MUTED    = colors.HexColor("#888888")
-    LIGHT_BG = colors.HexColor("#faf9f6")
-    BORDER   = colors.HexColor("#e8e4dc")
+    INK      = colors.HexColor("#1a1a1a")
+    ACCENT   = colors.HexColor("#1a1a1a")
+    MUTED    = colors.HexColor("#6b7280")
+    LIGHT_BG = colors.HexColor("#f9fafb")
+    BORDER   = colors.HexColor("#e5e7eb")
     WHITE    = colors.white
 
     def style(name, **kw):
@@ -1452,7 +1452,7 @@ def export_pdf(company, cd, sd):
             table_data.append([p.get("name",""), p.get("role",""), p.get("tier","")])
         t = Table(table_data, colWidths=[55*mm, 80*mm, 30*mm])
         t.setStyle(TableStyle([
-            ("BACKGROUND",    (0,0),(-1,0),  colors.HexColor("#f0ede6")),
+            ("BACKGROUND",    (0,0),(-1,0),  colors.HexColor("#f3f4f6")),
             ("TEXTCOLOR",     (0,0),(-1,0),  INK),
             ("FONTNAME",      (0,0),(-1,0),  "Helvetica-Bold"),
             ("FONTSIZE",      (0,0),(-1,0),  8),

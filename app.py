@@ -864,17 +864,30 @@ def get_firecrawl_credits():
 # ── TEXT PREP ─────────────────────────────────────────────────────────────────
 def build_corpus(pages):
     import re as _re
-    chunks = []
+    
+    # Separate priority pages (team/people) from others
+    priority_keywords = ["team", "people", "staff", "about", "who-we-are", "our-team"]
+    priority_pages = []
+    other_pages = []
+    
     for p in pages:
+        url = p.get("url", "").lower()
+        if any(kw in url for kw in priority_keywords):
+            priority_pages.append(p)
+        else:
+            other_pages.append(p)
+    
+    # Build corpus with priority pages first
+    chunks = []
+    for p in priority_pages + other_pages:
         md = p.get("markdown", "").strip()
         if not md:
             continue
-        # Strip image tags to reduce noise
         md = _re.sub(r'!\[.*?\]\(.*?\)', '', md)
         md = _re.sub(r'\n{3,}', '\n\n', md)
         chunks.append(f"[PAGE: {p.get('url','')}]\n{md[:15000]}")
+    
     return "\n\n---\n\n".join(chunks)[:40000]
-
 # ── AI ────────────────────────────────────────────────────────────────────────
 def ask_deepseek(system, user, max_tokens=2000, temperature=0.1, api_key=None):
     try:

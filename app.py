@@ -5,7 +5,6 @@ import json
 import re
 from supabase import create_client, Client
 from datetime import datetime, timezone, timedelta
-import time
 
 def now_gmt2():
     return datetime.now(timezone.utc) + timedelta(hours=2)
@@ -550,59 +549,75 @@ def scrape_with_scrapingbee(url):
         return []
 
 
-def smart_search(query):
-    """Try DuckDuckGo first, fall back to Google"""
-    from bs4 import BeautifulSoup
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    }
-
-    # Try DuckDuckGo first
-    try:
-        ddg_url = f"https://html.duckduckgo.com/html/?q={query.replace(' ', '+')}"
-        resp = requests.get(ddg_url, headers=headers, timeout=10)
-        soup = BeautifulSoup(resp.text, "html.parser")
-        results = soup.find_all("a", class_="result__snippet")
-        text = "\n".join([r.get_text() for r in results])
-        if len(text) > 200:
-            return text
-    except:
-        pass
-
-    time.sleep(0.5)
-
-    # Fall back to Google
-    try:
-        google_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
-        resp = requests.get(google_url, headers=headers, timeout=10)
-        soup = BeautifulSoup(resp.text, "html.parser")
-        for tag in soup(["script", "style"]):
-            tag.decompose()
-        text = soup.get_text(separator="\n", strip=True)
-        if len(text) > 500:
-            return text
-    except:
-        pass
-
-    return ""
-
-
 def search_people_via_google(company_name, domain):
     try:
+        from bs4 import BeautifulSoup
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        }
+
         all_text = ""
 
-        queries = [
-            f"site:{domain} team OR engineers OR directors OR people OR staff OR structural OR civil OR bridge OR geotechnical OR BIM OR FEA",
-            f"site:linkedin.com/in \"{company_name}\" engineer OR director OR structural OR bridge OR geotechnical OR principal OR associate OR consultant OR civil OR BIM OR FEA OR FEM",
-            f"site:linkedin.com/in \"{company_name}\" senior OR graduate OR director OR head OR lead OR chartered OR CEng OR MIStructE",
-        ]
+        # Search 1 — Site specific DuckDuckGo
+        try:
+            ddg_url = f"https://html.duckduckgo.com/html/?q=site:{domain}+team+OR+engineers+OR+directors+OR+people+OR+staff+OR+bridge+OR+structural+OR+geotechnical+OR+principal+OR+associate+OR+consultant+OR+civil+OR+BIM+OR+FEA"
+            resp = requests.get(ddg_url, headers=headers, timeout=10)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            results = soup.find_all("a", class_="result__snippet")
+            text = "\n".join([r.get_text() for r in results])
+            if len(text) < 200:
+                text = soup.get_text(separator="\n", strip=True)
+            all_text += text
+        except:
+            pass
 
-        for query in queries:
-            text = smart_search(query)
-            if text:
-                all_text += "\n\n" + text
-            time.sleep(0.5)
+        # Search 2 — Site specific Google
+        try:
+            google_url = f"https://www.google.com/search?q=site:{domain}+team+OR+engineers+OR+directors+OR+people+OR+staff+OR+bridge+OR+structural+OR+geotechnical+OR+principal+OR+associate+OR+consultant+OR+civil+OR+BIM+OR+FEA"
+            resp = requests.get(google_url, headers=headers, timeout=10)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for tag in soup(["script", "style"]):
+                tag.decompose()
+            text = soup.get_text(separator="\n", strip=True)
+            all_text += "\n\n" + text
+        except:
+            pass
+
+        # Search 3 — LinkedIn via Google
+        try:
+            li_url = f"https://www.google.com/search?q=site:linkedin.com/in+\"{company_name}\"+engineer+OR+director+OR+structural+OR+bridge+OR+geotechnical+OR+principal+OR+associate+OR+consultant+OR+civil+OR+architect+OR+BIM+OR+FEA+OR+FEM"
+            resp = requests.get(li_url, headers=headers, timeout=10)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for tag in soup(["script", "style"]):
+                tag.decompose()
+            text = soup.get_text(separator="\n", strip=True)
+            all_text += "\n\n" + text
+        except:
+            pass
+
+        # Search 4 — LinkedIn via DuckDuckGo
+        try:
+            li_ddg = f"https://html.duckduckgo.com/html/?q=site:linkedin.com/in+\"{company_name}\"+engineer+OR+director+OR+structural+OR+bridge+OR+geotechnical+OR+principal+OR+associate+OR+consultant+OR+civil+OR+BIM+OR+FEA"
+            resp = requests.get(li_ddg, headers=headers, timeout=10)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            results = soup.find_all("a", class_="result__snippet")
+            text = "\n".join([r.get_text() for r in results])
+            all_text += "\n\n" + text
+        except:
+            pass
+
+        # Search 5 — LinkedIn senior roles via Google
+        try:
+            li_url2 = f"https://www.google.com/search?q=site:linkedin.com/in+\"{company_name}\"+senior+OR+graduate+OR+technician+OR+founder+OR+owner+OR+manager+OR+director+OR+head+OR+lead+OR+chartered+OR+CEng+OR+MIStructE"
+            resp = requests.get(li_url2, headers=headers, timeout=10)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for tag in soup(["script", "style"]):
+                tag.decompose()
+            text = soup.get_text(separator="\n", strip=True)
+            all_text += "\n\n" + text
+        except:
+            pass
 
         return all_text[:8000]
     except:
@@ -760,6 +775,97 @@ Active Officers:
 
 
 
+def lookup_linkedin_company(company_name):
+    try:
+        from bs4 import BeautifulSoup
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        }
+        # Search LinkedIn company via Google
+        query = f'site:linkedin.com/company "{company_name}" engineers employees'
+        search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
+        resp = requests.get(search_url, headers=headers, timeout=10)
+        soup = BeautifulSoup(resp.text, "html.parser")
+        for tag in soup(["script", "style"]):
+            tag.decompose()
+        text = soup.get_text(separator="\n", strip=True)
+
+        # Also try DuckDuckGo
+        ddg_url = f"https://html.duckduckgo.com/html/?q=site:linkedin.com/company+\"{company_name}\""
+        resp2 = requests.get(ddg_url, headers=headers, timeout=10)
+        soup2 = BeautifulSoup(resp2.text, "html.parser")
+        results = soup2.find_all("a", class_="result__snippet")
+        text += "\n" + "\n".join([r.get_text() for r in results])
+
+        # Extract employee count signal
+        employee_signal = 0
+        import re
+        matches = re.findall(r'(\d+[\,\d]*)\s*employees', text.lower())
+        if matches:
+            employee_signal = matches[0].replace(",", "")
+
+        return text[:3000], employee_signal
+    except:
+        return "", 0
+
+
+def lookup_trustpilot(company_name, domain):
+    try:
+        from bs4 import BeautifulSoup
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        }
+        # Try Trustpilot directly
+        trustpilot_url = f"https://www.trustpilot.com/review/{domain}"
+        resp = requests.get(trustpilot_url, headers=headers, timeout=10)
+        soup = BeautifulSoup(resp.text, "html.parser")
+        text = soup.get_text(separator="\n", strip=True)
+
+        # Also search Google reviews
+        google_url = f"https://www.google.com/search?q=\"{company_name}\"+reviews+OR+testimonials+engineers"
+        resp2 = requests.get(google_url, headers=headers, timeout=10)
+        soup2 = BeautifulSoup(resp2.text, "html.parser")
+        for tag in soup2(["script", "style"]):
+            tag.decompose()
+        text += "\n\n" + soup2.get_text(separator="\n", strip=True)
+
+        review_count = text.lower().count("review")
+
+        return text[:3000], review_count
+    except:
+        return "", 0
+
+
+def lookup_planning_portal(company_name):
+    try:
+        from bs4 import BeautifulSoup
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        }
+        # Search planning applications via Google
+        query = f'"{company_name}" planning application structural engineer site:gov.uk OR site:planningportal.co.uk OR site:localplanning'
+        search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
+        resp = requests.get(search_url, headers=headers, timeout=10)
+        soup = BeautifulSoup(resp.text, "html.parser")
+        for tag in soup(["script", "style"]):
+            tag.decompose()
+        text = soup.get_text(separator="\n", strip=True)
+
+        # Also DuckDuckGo
+        ddg_url = f"https://html.duckduckgo.com/html/?q=\"{company_name}\"+planning+application+structural"
+        resp2 = requests.get(ddg_url, headers=headers, timeout=10)
+        soup2 = BeautifulSoup(resp2.text, "html.parser")
+        results = soup2.find_all("a", class_="result__snippet")
+        text += "\n" + "\n".join([r.get_text() for r in results])
+
+        project_count = text.lower().count("planning")
+
+        return text[:3000], project_count
+    except:
+        return "", 0
 
 def firecrawl_crawl(url, max_pages=30):
     try:
@@ -788,16 +894,7 @@ def firecrawl_crawl(url, max_pages=30):
                 resp = requests.post(
                     "https://api.firecrawl.dev/v1/crawl",
                     headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}", "Content-Type": "application/json"},
-                    json={
-                        "url": url,
-                        "limit": max_pages,
-                        "scrapeOptions": {"formats": ["markdown"]},
-                        "includePaths": [
-                            ".*/projects.*", ".*/our-projects.*", ".*/case-studies.*",
-                            ".*/people.*", ".*/our-people.*", ".*/team.*", ".*/about.*",
-                            ".*/expertise.*", ".*/sectors.*", ".*/what-we-do.*", ".*/services.*"
-                        ]
-                    }, timeout=30
+                    json={"url": url, "limit": max_pages, "scrapeOptions": {"formats": ["markdown"]}}, timeout=30
                 )
                 job_id = resp.json().get("id")
                 if job_id:
@@ -828,16 +925,7 @@ def firecrawl_crawl(url, max_pages=30):
         resp = requests.post(
             "https://api.firecrawl.dev/v1/crawl",
             headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}", "Content-Type": "application/json"},
-            json={
-                "url": url,
-                "limit": max_pages,
-                "scrapeOptions": {"formats": ["markdown"]},
-                "includePaths": [
-                    ".*/projects.*", ".*/our-projects.*", ".*/case-studies.*",
-                    ".*/people.*", ".*/our-people.*", ".*/team.*", ".*/about.*",
-                    ".*/expertise.*", ".*/sectors.*", ".*/what-we-do.*", ".*/services.*"
-                ]
-            }, timeout=30
+            json={"url": url, "limit": max_pages, "scrapeOptions": {"formats": ["markdown"]}}, timeout=30
         )
         job_id = resp.json().get("id")
         if not job_id:
@@ -882,30 +970,17 @@ def get_firecrawl_credits():
 # ── TEXT PREP ─────────────────────────────────────────────────────────────────
 def build_corpus(pages):
     import re as _re
-    
-    # Separate priority pages (team/people) from others
-    priority_keywords = ["team", "people", "staff", "about", "who-we-are", "our-team"]
-    priority_pages = []
-    other_pages = []
-    
-    for p in pages:
-        url = p.get("url", "").lower()
-        if any(kw in url for kw in priority_keywords):
-            priority_pages.append(p)
-        else:
-            other_pages.append(p)
-    
-    # Build corpus with priority pages first
     chunks = []
-    for p in priority_pages + other_pages:
+    for p in pages:
         md = p.get("markdown", "").strip()
         if not md:
             continue
+        # Strip image tags to reduce noise
         md = _re.sub(r'!\[.*?\]\(.*?\)', '', md)
         md = _re.sub(r'\n{3,}', '\n\n', md)
         chunks.append(f"[PAGE: {p.get('url','')}]\n{md[:15000]}")
-    
     return "\n\n---\n\n".join(chunks)[:40000]
+
 # ── AI ────────────────────────────────────────────────────────────────────────
 def ask_deepseek(system, user, max_tokens=2000, temperature=0.1, api_key=None):
     try:
@@ -943,12 +1018,11 @@ def analyze_company(corpus):
   "confidence": "High|Medium|Low",
   "confidence_reason": "One sentence explaining why confidence is High, Medium or Low based on data quality and completeness of the website"
 }}
-Extract ALL people. "For locations: list ALL explicitly stated office cities. Put the HEADQUARTERS or primary UK office first.",
+Extract ALL people. For locations: ONLY explicitly stated office cities.
 Extract ONLY engineering and technical staff — directors, engineers, technicians, consultants.
 EXCLUDE: blog authors, contributing authors, lead authors, writers, journalists, or anyone whose role relates to writing/publishing rather than engineering.
 Only include people who work AT the company as engineers or technical staff.
 For locations: ONLY explicitly stated office cities.
-For employee_count: check ALL sources including Glassdoor, LinkedIn, Companies House and the website. Glassdoor often shows ranges like "51-200 employees" — use this if the website doesn't state it explicitly.
 For projects: extract ALL completed or ongoing projects mentioned anywhere on the site — project pages, case studies, portfolio sections, news. Include project name, type, location if stated, client if stated, and a one sentence description. Set fem_relevant to true if the project involved structural analysis, FEA, FEM, complex geometry, bridges, or heavy civil engineering.
 Website content:
 {corpus}""",
@@ -1570,11 +1644,6 @@ with main:
         if not website.startswith("http"):
             website = "https://" + website
 
-        # Clear old report data immediately when running fresh analysis
-        for key in ["loaded_report", "generated_email", "email_domain"]:
-            if key in st.session_state:
-                del st.session_state[key]
-
         active_domain = extract_domain(website)
 
         prog = st.progress(0)
@@ -1681,15 +1750,31 @@ with main:
             extra_corpus += f"\n\n[SOURCE: Company Registry]\n{ch_text}"
             source_summary.append(f"📋 Company Registry — searched Companies House (UK), OpenCorporates (EU) and TED Tenders, {ch_directors} director entries found")
 
-        
-    
-        # Only search for people if genuinely none found from website
-        if len(company_data.get("people", [])) == 0 and len(corpus) > 1000:
+        stat.caption("💼 Checking LinkedIn...")
+        li_text, li_employees = lookup_linkedin_company(company_name_known)
+        if li_text:
+            extra_corpus += f"\n\n[SOURCE: LinkedIn]\n{li_text}"
+            source_summary.append(f"💼 LinkedIn — searched company page for employee count and signals ({li_employees} employees)" if li_employees else "💼 LinkedIn — searched company page, employee count not found publicly")
+
+        stat.caption("⭐ Checking reviews...")
+        tp_text, tp_reviews = lookup_trustpilot(company_name_known, domain_known)
+        if tp_text:
+            extra_corpus += f"\n\n[SOURCE: Reviews]\n{tp_text}"
+            source_summary.append(f"⭐ Trustpilot & Google Reviews — {tp_reviews} review mentions found, added to pain point analysis")
+
+        stat.caption("🏗️ Checking planning applications...")
+        pp_text, pp_projects = lookup_planning_portal(company_name_known)
+        if pp_text:
+            extra_corpus += f"\n\n[SOURCE: Planning Portal]\n{pp_text}"
+            source_summary.append(f"🏗️ Planning Portal — {pp_projects} planning application mentions found, added to projects")
+
+        # If no people found, try Google/LinkedIn people search
+        if len(company_data.get("people", [])) == 0:
             stat.caption("👥 Searching for people via Google & LinkedIn...")
             google_text = search_people_via_google(company_name_known, domain_known)
             if google_text:
                 extra_corpus += f"\n\n[SOURCE: People Search]\n{google_text}"
-                source_summary.append("👥 People Search — searched LinkedIn profiles and Google for named engineers at this company")
+                source_summary.append(f"👥 People Search — searched LinkedIn profiles and Google for named engineers at this company")
 
         # Re-analyse with enriched corpus if extra data found
         if extra_corpus:

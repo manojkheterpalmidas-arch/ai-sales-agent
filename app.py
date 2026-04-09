@@ -1723,10 +1723,10 @@ with main:
             # All pages under 500 chars = clearly failed
             if all(len(p.get("markdown", "")) < 500 for p in page_list):
                 return True
-            # Only 1-2 pages AND total content is short = likely cookie wall or blocked
+            # Any real company site should yield 3+ pages with real content
+            # If we got fewer, the crawl was likely blocked or hit a cookie wall
             real_pages = [p for p in page_list if len(p.get("markdown", "")) > 500]
-            total_content = sum(len(p.get("markdown", "")) for p in real_pages)
-            if len(real_pages) <= 2 and total_content < 3000:
+            if len(real_pages) < 3:
                 return True
             return False
 
@@ -1738,7 +1738,7 @@ with main:
             # Step 1 — Try ScrapingBee (real headless browser, best at cookie walls)
             stat.caption("🌐 Trying ScrapingBee browser renderer...")
             sb_pages = scrape_with_scrapingbee(website)
-            if sb_pages and not is_thin_crawl(sb_pages):
+            if sb_pages and any(len(p.get("markdown", "")) > 500 for p in sb_pages):
                 st.success(f"✅ ScrapingBee retrieved {len(sb_pages)} pages")
                 pages = sb_pages
                 needs_fallback = False
@@ -1747,7 +1747,7 @@ with main:
             if needs_fallback:
                 stat.caption("🔄 Trying direct fetch with link discovery...")
                 direct_pages = direct_fetch(website)
-                if direct_pages and not is_thin_crawl(direct_pages):
+                if direct_pages and any(len(p.get("markdown", "")) > 500 for p in direct_pages):
                     st.success(f"✅ Direct fetch retrieved {len(direct_pages)} pages")
                     pages = direct_pages
                     needs_fallback = False

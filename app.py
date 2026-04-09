@@ -1714,28 +1714,87 @@ with main:
         else:
             pages = firecrawl_crawl(website)
         
-        
-        
-        if not pages or all(len(p.get("markdown", "")) < 500 for p in pages):
-            st.warning("⚠ This site uses a JavaScript cookie wall that blocks automated crawling.")
+        # ── SMART FALLBACK: detect thin/failed crawls ────────────────────
+        # Check if Firecrawl returned usable content or just cookie wall junk
+        def is_thin_crawl(page_list):
+            """Returns True if the crawl result is too thin to be useful."""
+            if not page_list:
+                return True
+            # All pages under 500 chars = clearly failed
+            if all(len(p.get("markdown", "")) < 500 for p in page_list):
+                return True
+            # Only 1-2 pages AND total content is short = likely cookie wall or blocked
+            real_pages = [p for p in page_list if len(p.get("markdown", "")) > 500]
+            total_content = sum(len(p.get("markdown", "")) for p in real_pages)
+            if len(real_pages) <= 2 and total_content < 3000:
+                return True
+            return False
 
-            # Step 1 — Try ScrapingBee first (real browser, most reliable)
+        needs_fallback = is_thin_crawl(pages)
+
+        if needs_fallback:
+            st.warning("⚠ Limited content retrieved — site may use a cookie wall or block automated crawling. Trying alternative methods...")
+
+            # Step 1 — Try ScrapingBee (real headless browser, best at cookie walls)
             stat.caption("🌐 Trying ScrapingBee browser renderer...")
             sb_pages = scrape_with_scrapingbee(website)
-            if sb_pages:
-                st.success("✅ Retrieved content via ScrapingBee")
+            if sb_pages and not is_thin_crawl(sb_pages):
+                st.success(f"✅ ScrapingBee retrieved {len(sb_pages)} pages")
                 pages = sb_pages
+                needs_fallback = False
 
-            # Step 2 — Try Google Cache if ScrapingBee failed
-            if not pages or all(len(p.get("markdown", "")) < 500 for p in pages):
+            # Step 2 — Try direct fetch with subpage discovery
+            if needs_fallback:
+                stat.caption("🔄 Trying direct fetch with link discovery...")
+                direct_pages = direct_fetch(website)
+                if direct_pages and not is_thin_crawl(direct_pages):
+                    st.success(f"✅ Direct fetch retrieved {len(direct_pages)} pages")
+                    pages = direct_pages
+                    needs_fallback = False
+
+            # Step 3 — Try Google Cache
+            if needs_fallback:
                 stat.caption("🔄 Trying Google Cache...")
                 cache_pages = fetch_google_cache(website)
                 if cache_pages and any(len(p.get("markdown","")) > 500 for p in cache_pages):
-                    st.success("✅ Retrieved content via Google Cache")
+                    st.success(f"✅ Google Cache retrieved {len(cache_pages)} pages")
                     pages = cache_pages
+                    needs_fallback = False
 
-            # Step 3 — Manual paste if everything failed
-            if not pages or all(len(p.get("markdown", "")) < 500 for p in pages):
+            # Step 4 — If we got SOME content from Firecrawl + SOME from fallbacks, merge
+            if needs_fallback and pages and any(len(p.get("markdown", "")) > 300 for p in pages):
+                # We have thin but non-zero Firecrawl content — try to supplement it
+                stat.caption("🔄 Supplementing with direct subpage fetch...")
+                from urllib.parse import urlparse
+                base = f"{urlparse(website).scheme}://{urlparse(website).netloc}"
+                priority_paths = ["/about", "/about-us", "/our-team", "/team", "/people",
+                                  "/projects", "/our-projects", "/services", "/what-we-do",
+                                  "/careers", "/expertise", "/our-expertise", "/sectors"]
+                supplement_pages = []
+                for path in priority_paths:
+                    try:
+                        sub_url = base + path
+                        sub_pages = direct_fetch(sub_url)
+                        if sub_pages:
+                            for sp in sub_pages[:1]:  # just the target page, not its sublinks
+                                if len(sp.get("markdown", "")) > 500:
+                                    supplement_pages.append(sp)
+                    except:
+                        pass
+                    if len(supplement_pages) >= 6:
+                        break
+
+                if supplement_pages:
+                    st.success(f"✅ Supplemented with {len(supplement_pages)} additional subpages")
+                    # Merge: keep original pages + add supplements (deduplicate by URL)
+                    existing_urls = {p.get("url", "") for p in pages}
+                    for sp in supplement_pages:
+                        if sp.get("url", "") not in existing_urls:
+                            pages.append(sp)
+                    needs_fallback = False
+
+            # Step 5 — Manual paste if everything truly failed
+            if needs_fallback:
                 st.markdown("""
                 <div style='background:white;border:1px solid #e8e4dc;border-radius:8px;
                      padding:16px 20px;margin-bottom:12px;'>

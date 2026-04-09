@@ -782,150 +782,111 @@ def lookup_linkedin_company(company_name):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         }
-        all_text = ""
+        # Search LinkedIn company via Google
+        query = f'site:linkedin.com/company "{company_name}" engineers employees'
+        search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
+        resp = requests.get(search_url, headers=headers, timeout=10)
+        soup = BeautifulSoup(resp.text, "html.parser")
+        for tag in soup(["script", "style"]):
+            tag.decompose()
+        text = soup.get_text(separator="\n", strip=True)
 
-        # Search 1 — LinkedIn company via Google
-        try:
-            query = f'site:linkedin.com/company "{company_name}" engineers employees'
-            search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
-            resp = requests.get(search_url, headers=headers, timeout=10)
-            soup = BeautifulSoup(resp.text, "html.parser")
-            for tag in soup(["script", "style"]):
-                tag.decompose()
-            all_text += soup.get_text(separator="\n", strip=True)
-        except:
-            pass
+        # Also try DuckDuckGo
+        ddg_url = f"https://html.duckduckgo.com/html/?q=site:linkedin.com/company+\"{company_name}\""
+        resp2 = requests.get(ddg_url, headers=headers, timeout=10)
+        soup2 = BeautifulSoup(resp2.text, "html.parser")
+        results = soup2.find_all("a", class_="result__snippet")
+        text += "\n" + "\n".join([r.get_text() for r in results])
 
-        # Search 2 — DuckDuckGo LinkedIn
-        try:
-            ddg_url = f"https://html.duckduckgo.com/html/?q=site:linkedin.com/company+\"{company_name}\""
-            resp2 = requests.get(ddg_url, headers=headers, timeout=10)
-            soup2 = BeautifulSoup(resp2.text, "html.parser")
-            results = soup2.find_all("a", class_="result__snippet")
-            all_text += "\n" + "\n".join([r.get_text() for r in results])
-        except:
-            pass
-
-        # Search 3 — Google general employee count (catches Glassdoor, Crunchbase, etc.)
-        try:
-            query3 = f'"{company_name}" employees OR "number of employees" OR "company size" OR "team size"'
-            search_url3 = f"https://www.google.com/search?q={query3.replace(' ', '+')}"
-            resp3 = requests.get(search_url3, headers=headers, timeout=10)
-            soup3 = BeautifulSoup(resp3.text, "html.parser")
-            for tag in soup3(["script", "style"]):
-                tag.decompose()
-            all_text += "\n" + soup3.get_text(separator="\n", strip=True)
-        except:
-            pass
-
-        # Search 4 — DuckDuckGo general employee count
-        try:
-            ddg_url4 = f"https://html.duckduckgo.com/html/?q=\"{company_name}\"+employees+OR+\"company+size\"+OR+staff"
-            resp4 = requests.get(ddg_url4, headers=headers, timeout=10)
-            soup4 = BeautifulSoup(resp4.text, "html.parser")
-            results4 = soup4.find_all("a", class_="result__snippet")
-            all_text += "\n" + "\n".join([r.get_text() for r in results4])
-            # Also get full text
-            all_text += "\n" + soup4.get_text(separator="\n", strip=True)
-        except:
-            pass
-
-        # Extract employee count — try multiple patterns
-        employee_signal = ""
+        # Extract employee count signal
+        employee_signal = 0
         import re
-        text_lower = all_text.lower()
+        matches = re.findall(r'(\d+[\,\d]*)\s*employees', text.lower())
+        if matches:
+            employee_signal = matches[0].replace(",", "")
 
-        # Pattern 1: "X employees" (LinkedIn style)
-        matches = re.findall(r'(\d[\d,\.]*)\s*(?:\+\s*)?employees', text_lower)
-        # Pattern 2: "X-Y employees" (range style like "51-200 employees")
-        range_matches = re.findall(r'(\d[\d,]*\s*-\s*\d[\d,]*)\s*employees', text_lower)
-        # Pattern 3: "employees: X" or "company size: X"
-        label_matches = re.findall(r'(?:employees|company size|team size|staff)[\s:]+(\d[\d,\.]*(?:\s*-\s*\d[\d,\.]*)?)', text_lower)
-        # Pattern 4: "X+ employees" or "X people"
-        people_matches = re.findall(r'(\d[\d,\.]*)\s*\+?\s*(?:people|staff|team members)', text_lower)
-
-        if range_matches:
-            employee_signal = range_matches[0].replace(" ", "")
-        elif matches:
-            # Pick the most likely employee count (filter out very small or very large numbers)
-            for m in matches:
-                num_str = m.replace(",", "").replace(".", "")
-                try:
-                    num = int(num_str)
-                    if 2 <= num <= 500000:
-                        employee_signal = m.replace(",", "")
-                        break
-                except:
-                    continue
-        elif label_matches:
-            employee_signal = label_matches[0].replace(" ", "")
-        elif people_matches:
-            for m in people_matches:
-                num_str = m.replace(",", "").replace(".", "")
-                try:
-                    num = int(num_str)
-                    if 2 <= num <= 500000:
-                        employee_signal = m.replace(",", "")
-                        break
-                except:
-                    continue
-
-        return all_text[:3000], employee_signal
+        return text[:3000], employee_signal
     except:
-        return "", ""
+        return "", 0
 
 
 def lookup_glassdoor(company_name, domain):
     try:
+        import time as _time
         from bs4 import BeautifulSoup
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-GB,en;q=0.9",
         }
-
         all_text = ""
         review_count = 0
+        base_name = domain.replace("www.", "").split(".")[0]
 
-        # Search 1 — Glassdoor via Google (company reviews)
         try:
-            google_url = f"https://www.google.com/search?q=site:glassdoor.com+\"{company_name}\"+reviews"
+            google_url = f"https://www.google.com/search?q=glassdoor+\"{company_name}\"+reviews+engineers+software+tools+employees"
             resp = requests.get(google_url, headers=headers, timeout=10)
             soup = BeautifulSoup(resp.text, "html.parser")
             for tag in soup(["script", "style"]):
                 tag.decompose()
             text = soup.get_text(separator="\n", strip=True)
             all_text += text
+            review_count += text.lower().count("glassdoor")
         except:
             pass
 
-        # Search 2 — Glassdoor via DuckDuckGo
+        _time.sleep(0.5)
+
         try:
-            ddg_url = f"https://html.duckduckgo.com/html/?q=site:glassdoor.com+\"{company_name}\"+reviews+engineering"
-            resp2 = requests.get(ddg_url, headers=headers, timeout=10)
-            soup2 = BeautifulSoup(resp2.text, "html.parser")
-            results = soup2.find_all("a", class_="result__snippet")
-            text2 = "\n".join([r.get_text() for r in results])
-            if len(text2) < 200:
-                text2 = soup2.get_text(separator="\n", strip=True)
-            all_text += "\n\n" + text2
+            ddg_url = f"https://html.duckduckgo.com/html/?q=glassdoor+{base_name}+engineers+reviews+software"
+            resp = requests.get(ddg_url, headers=headers, timeout=10)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            results = soup.find_all("a", class_="result__snippet")
+            text = "\n".join([r.get_text() for r in results])
+            all_text += "\n\n" + text
+            review_count += len(results)
         except:
             pass
 
-        # Search 3 — Google for general employer reviews and engineering culture
+        _time.sleep(0.5)
+
         try:
-            google_url2 = f"https://www.google.com/search?q=\"{company_name}\"+employer+reviews+OR+\"working+at\"+OR+engineering+culture"
-            resp3 = requests.get(google_url2, headers=headers, timeout=10)
-            soup3 = BeautifulSoup(resp3.text, "html.parser")
-            for tag in soup3(["script", "style"]):
+            search_url = f"https://www.google.com/search?q=glassdoor.co.uk+{company_name}+reviews+employee+size+software"
+            resp = requests.get(search_url, headers=headers, timeout=10)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for tag in soup(["script", "style"]):
                 tag.decompose()
-            all_text += "\n\n" + soup3.get_text(separator="\n", strip=True)
+            text = soup.get_text(separator="\n", strip=True)
+            all_text += "\n\n" + text
         except:
             pass
 
-        review_count = all_text.lower().count("review")
+        _time.sleep(0.5)
 
-        return all_text[:3000], review_count
+        try:
+            indeed_url = f"https://html.duckduckgo.com/html/?q=indeed.com+\"{company_name}\"+reviews+engineer+software+tools"
+            resp = requests.get(indeed_url, headers=headers, timeout=10)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            results = soup.find_all("a", class_="result__snippet")
+            text = "\n".join([r.get_text() for r in results])
+            all_text += "\n\n" + text
+            review_count += len(results)
+        except:
+            pass
+
+        _time.sleep(0.5)
+
+        try:
+            size_url = f"https://www.google.com/search?q=\"{company_name}\"+employees+size+headquarters+glassdoor+OR+linkedin+OR+indeed"
+            resp = requests.get(size_url, headers=headers, timeout=10)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for tag in soup(["script", "style"]):
+                tag.decompose()
+            text = soup.get_text(separator="\n", strip=True)
+            all_text += "\n\n" + text
+        except:
+            pass
+
+        return all_text[:5000], review_count
     except:
         return "", 0
 
@@ -1115,6 +1076,7 @@ Extract ONLY engineering and technical staff — directors, engineers, technicia
 EXCLUDE: blog authors, contributing authors, lead authors, writers, journalists, or anyone whose role relates to writing/publishing rather than engineering.
 Only include people who work AT the company as engineers or technical staff.
 For locations: ONLY explicitly stated office cities.
+For employee_count: check ALL sources including Glassdoor, LinkedIn, Companies House and the website. Glassdoor often shows ranges like "51-200 employees" — use this if the website doesn't state it explicitly.
 For projects: extract ALL completed or ongoing projects mentioned anywhere on the site — project pages, case studies, portfolio sections, news. Include project name, type, location if stated, client if stated, and a one sentence description. Set fem_relevant to true if the project involved structural analysis, FEA, FEM, complex geometry, bridges, or heavy civil engineering.
 Website content:
 {corpus}""",
@@ -1848,15 +1810,11 @@ with main:
             extra_corpus += f"\n\n[SOURCE: LinkedIn]\n{li_text}"
             source_summary.append(f"💼 LinkedIn — searched company page for employee count and signals ({li_employees} employees)" if li_employees else "💼 LinkedIn — searched company page, employee count not found publicly")
 
-        # If employee count was found via LinkedIn but not on website, inject it
-        if li_employees and (not company_data.get("employee_count") or company_data.get("employee_count") in [None, "null", "", "—"]):
-            company_data["employee_count"] = str(li_employees)
-
-        stat.caption("⭐ Checking Glassdoor & reviews...")
+        stat.caption("⭐ Checking Glassdoor & Indeed...")
         gd_text, gd_reviews = lookup_glassdoor(company_name_known, domain_known)
         if gd_text:
-            extra_corpus += f"\n\n[SOURCE: Glassdoor & Employer Reviews]\n{gd_text}"
-            source_summary.append(f"⭐ Glassdoor & Employer Reviews — {gd_reviews} review mentions found, added to employer insight & pain point analysis")
+            extra_corpus += f"\n\n[SOURCE: Glassdoor & Indeed Reviews]\n{gd_text}"
+        source_summary.append(f"⭐ Glassdoor & Indeed — {gd_reviews} employee review snippets found, added to full analysis")
 
         stat.caption("🏗️ Checking planning applications...")
         pp_text, pp_projects = lookup_planning_portal(company_name_known)

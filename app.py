@@ -788,7 +788,16 @@ def firecrawl_crawl(url, max_pages=30):
                 resp = requests.post(
                     "https://api.firecrawl.dev/v1/crawl",
                     headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}", "Content-Type": "application/json"},
-                    json={"url": url, "limit": max_pages, "scrapeOptions": {"formats": ["markdown"]}}, timeout=30
+                    json={
+                        "url": url,
+                        "limit": max_pages,
+                        "scrapeOptions": {"formats": ["markdown"]},
+                        "includePaths": [
+                            ".*/projects.*", ".*/our-projects.*", ".*/case-studies.*",
+                            ".*/people.*", ".*/our-people.*", ".*/team.*", ".*/about.*",
+                            ".*/expertise.*", ".*/sectors.*", ".*/what-we-do.*", ".*/services.*"
+                        ]
+                    }, timeout=30
                 )
                 job_id = resp.json().get("id")
                 if job_id:
@@ -819,7 +828,16 @@ def firecrawl_crawl(url, max_pages=30):
         resp = requests.post(
             "https://api.firecrawl.dev/v1/crawl",
             headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}", "Content-Type": "application/json"},
-            json={"url": url, "limit": max_pages, "scrapeOptions": {"formats": ["markdown"]}}, timeout=30
+            json={
+                "url": url,
+                "limit": max_pages,
+                "scrapeOptions": {"formats": ["markdown"]},
+                "includePaths": [
+                    ".*/projects.*", ".*/our-projects.*", ".*/case-studies.*",
+                    ".*/people.*", ".*/our-people.*", ".*/team.*", ".*/about.*",
+                    ".*/expertise.*", ".*/sectors.*", ".*/what-we-do.*", ".*/services.*"
+                ]
+            }, timeout=30
         )
         job_id = resp.json().get("id")
         if not job_id:

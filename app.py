@@ -1361,8 +1361,8 @@ def export_pdf(company, cd, sd):
         base.update(kw)
         return ParagraphStyle(name, **base)
 
-    S_TITLE   = style("title",   fontName="Helvetica-Bold", fontSize=22, textColor=INK, spaceAfter=4)
-    S_SCORE   = style("score",   fontName="Helvetica-Bold", fontSize=11, textColor=ACCENT)
+    S_TITLE   = style("title",   fontName="Helvetica-Bold", fontSize=22, textColor=INK, spaceAfter=10)
+    S_SCORE   = style("score",   fontName="Helvetica-Bold", fontSize=11, textColor=MUTED, spaceAfter=4)
     S_META    = style("meta",    fontSize=9, textColor=MUTED, spaceAfter=8)
     S_SECTION = style("section", fontName="Helvetica-Bold", fontSize=9, textColor=ACCENT, spaceBefore=14, spaceAfter=6, letterSpacing=1.5)
     S_BODY    = style("body",    fontSize=10, textColor=INK, leading=15, spaceAfter=4)

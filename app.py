@@ -441,7 +441,7 @@ def direct_fetch(url, max_subpages=14):
 
 def serpapi_search(query, num_results=10):
     try:
-        api_key = st.secrets["SERPAPI_KEY"]
+        api_key = st.secrets["SERPER_API_KEY"]
     except:
         return []
 

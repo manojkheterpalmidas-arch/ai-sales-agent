@@ -1159,6 +1159,7 @@ TYPICAL USE CASES:
 - Earthquake-resistant seismic design
 - Batch processing and parametric design optimisation
 - Industrial structures — factories and plants
+- General structures
 
 VALUE PROPOSITION: Efficiency through automation + accuracy through advanced analysis + modern usability = integrated building design workflow.
 POSITIONING: Best global design tool for building and general structure firms.

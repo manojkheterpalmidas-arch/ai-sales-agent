@@ -792,7 +792,7 @@ def lookup_linkedin_company(company_name):
         return "", 0
         
 
-ddef lookup_glassdoor(company_name, domain):
+def lookup_glassdoor(company_name, domain):
     try:
         all_text = ""
 

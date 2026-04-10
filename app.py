@@ -776,55 +776,6 @@ Active Officers:
 
 
 
-def lookup_linkedin_company(company_name):
-    try:
-        text = format_serpapi_results(
-            serpapi_search(f'site:linkedin.com/company "{company_name}" engineers employees', num_results=10),
-            max_chars=3000
-        )
-
-        import re
-        matches = re.findall(r'(\\d+[\\,\\d]*)\\s*employees', text.lower())
-        employee_signal = matches[0].replace(",", "") if matches else 0
-
-        return text, employee_signal
-    except:
-        return "", 0
-        
-
-def lookup_glassdoor(company_name, domain):
-    try:
-        all_text = ""
-
-        all_text += format_serpapi_results(
-            serpapi_search(f'glassdoor "{company_name}" reviews engineers software', num_results=10),
-            max_chars=2000
-        )
-
-        all_text += "\n\n" + format_serpapi_results(
-            serpapi_search(f'"{company_name}" employees size glassdoor linkedin indeed', num_results=10),
-            max_chars=2000
-        )
-
-        review_count = all_text.lower().count("glassdoor")
-
-        return all_text[:5000], review_count
-    except:
-        return "", 0
-
-def lookup_planning_portal(company_name):
-    try:
-        text = format_serpapi_results(
-            serpapi_search(f'"{company_name}" planning application structural engineer', num_results=10),
-            max_chars=3000
-        )
-
-        project_count = text.lower().count("planning")
-        return text, project_count
-    except:
-        return "", 0
-
-
 def firecrawl_crawl(url, max_pages=30):
     try:
         # First try scraping with actions to handle cookie popups

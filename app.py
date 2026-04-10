@@ -439,18 +439,53 @@ def direct_fetch(url, max_subpages=14):
     except:
         return []
 
-def fetch_google_cache(url):
-    from bs4 import BeautifulSoup
+def serpapi_search(query, num_results=10):
+    try:
+        api_key = st.secrets["SERPAPI_KEY"]
+    except:
+        return []
+
+    if not api_key:
+        return []
+
+    try:
+        resp = requests.get(
+            "https://serpapi.com/search.json",
+            params={
+                "engine": "google",
+                "q": query,
+                "api_key": api_key,
+                "num": num_results,
+            },
+            timeout=20
+        )
+        data = resp.json()
+        return data.get("organic_results", []) or []
+    except:
+        return []
+
+
+def format_serpapi_results(results, max_chars=4000):
+    lines = []
+    for item in results:
+        title = item.get("title", "")
+        snippet = item.get("snippet", "")
+        link = item.get("link", "")
+        parts = [p for p in [title, snippet, link] if p]
+        if parts:
+            lines.append(" | ".join(parts))
+    return "\n".join(lines)[:max_chars]
+
+
+def fetch_serpapi_site_results(url):
     from urllib.parse import urlparse
 
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    }
-
     results = []
-    
-    # Common team/people page paths to try
-    base = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
+    seen = set()
+
+    parsed = urlparse(url)
+    domain = parsed.netloc
+    base = f"{parsed.scheme}://{parsed.netloc}"
     urls_to_try = [
         url,
         f"{base}/our-team",
@@ -460,20 +495,25 @@ def fetch_google_cache(url):
         f"{base}/about",
     ]
 
-    for target_url in urls_to_try:
-        try:
-            cache_url = f"https://webcache.googleusercontent.com/search?q=cache:{target_url}&hl=en"
-            resp = requests.get(cache_url, headers=headers, timeout=15)
-            soup = BeautifulSoup(resp.text, "html.parser")
-            for tag in soup(["script", "style", "noscript", "iframe"]):
-                tag.decompose()
-            text = soup.get_text(separator="\n", strip=True)
-            if len(text) > 500:
-                results.append({"url": target_url, "markdown": text})
-        except:
-            continue
+    queries = [
+        f"site:{domain} team OR people OR staff OR leadership",
+        f"site:{domain} engineers OR directors OR principal OR associate OR consultant",
+    ]
 
-    return results if results else []
+    for target_url in urls_to_try:
+        queries.append(f"site:{domain} \"{target_url}\"")
+
+    for query in queries:
+        for item in serpapi_search(query, num_results=8):
+            link = item.get("link", "")
+            if not link or domain not in link or link in seen:
+                continue
+            text = " | ".join([p for p in [item.get("title", ""), item.get("snippet", ""), link] if p])
+            if len(text) > 80:
+                results.append({"url": link, "markdown": text})
+                seen.add(link)
+
+    return results
 
 
 def scrape_with_scrapingbee(url):
@@ -562,7 +602,7 @@ def scrape_with_scrapingbee(url):
         return []
 
 
-def search_people_via_google(company_name, domain):
+def search_people_via_serpapi(company_name, domain):
     try:
         from bs4 import BeautifulSoup
         headers = {
@@ -585,26 +625,28 @@ def search_people_via_google(company_name, domain):
         except:
             pass
 
-        # Search 2 — Site specific Google
+        # Search 2 — Site specific SerpAPI
         try:
-            google_url = f"https://www.google.com/search?q=site:{domain}+team+OR+engineers+OR+directors+OR+people+OR+staff+OR+bridge+OR+structural+OR+geotechnical+OR+principal+OR+associate+OR+consultant+OR+civil+OR+BIM+OR+FEA"
-            resp = requests.get(google_url, headers=headers, timeout=10)
-            soup = BeautifulSoup(resp.text, "html.parser")
-            for tag in soup(["script", "style"]):
-                tag.decompose()
-            text = soup.get_text(separator="\n", strip=True)
+            text = format_serpapi_results(
+                serpapi_search(
+                    f"site:{domain} team OR engineers OR directors OR people OR staff OR bridge OR structural OR geotechnical OR principal OR associate OR consultant OR civil OR BIM OR FEA",
+                    num_results=10
+                ),
+                max_chars=2500
+            )
             all_text += "\n\n" + text
         except:
             pass
 
-        # Search 3 — LinkedIn via Google
+        # Search 3 — LinkedIn via SerpAPI
         try:
-            li_url = f"https://www.google.com/search?q=site:linkedin.com/in+\"{company_name}\"+engineer+OR+director+OR+structural+OR+bridge+OR+geotechnical+OR+principal+OR+associate+OR+consultant+OR+civil+OR+architect+OR+BIM+OR+FEA+OR+FEM"
-            resp = requests.get(li_url, headers=headers, timeout=10)
-            soup = BeautifulSoup(resp.text, "html.parser")
-            for tag in soup(["script", "style"]):
-                tag.decompose()
-            text = soup.get_text(separator="\n", strip=True)
+            text = format_serpapi_results(
+                serpapi_search(
+                    f'site:linkedin.com/in "{company_name}" engineer OR director OR structural OR bridge OR geotechnical OR principal OR associate OR consultant OR civil OR architect OR BIM OR FEA OR FEM',
+                    num_results=10
+                ),
+                max_chars=2500
+            )
             all_text += "\n\n" + text
         except:
             pass
@@ -620,14 +662,15 @@ def search_people_via_google(company_name, domain):
         except:
             pass
 
-        # Search 5 — LinkedIn senior roles via Google
+        # Search 5 — LinkedIn senior roles via SerpAPI
         try:
-            li_url2 = f"https://www.google.com/search?q=site:linkedin.com/in+\"{company_name}\"+senior+OR+graduate+OR+technician+OR+founder+OR+owner+OR+manager+OR+director+OR+head+OR+lead+OR+chartered+OR+CEng+OR+MIStructE"
-            resp = requests.get(li_url2, headers=headers, timeout=10)
-            soup = BeautifulSoup(resp.text, "html.parser")
-            for tag in soup(["script", "style"]):
-                tag.decompose()
-            text = soup.get_text(separator="\n", strip=True)
+            text = format_serpapi_results(
+                serpapi_search(
+                    f'site:linkedin.com/in "{company_name}" senior OR graduate OR technician OR founder OR owner OR manager OR director OR head OR lead OR chartered OR CEng OR MIStructE',
+                    num_results=10
+                ),
+                max_chars=2500
+            )
             all_text += "\n\n" + text
         except:
             pass
@@ -795,14 +838,9 @@ def lookup_linkedin_company(company_name):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         }
-        # Search LinkedIn company via Google
+        # Search LinkedIn company via SerpAPI
         query = f'site:linkedin.com/company "{company_name}" engineers employees'
-        search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
-        resp = requests.get(search_url, headers=headers, timeout=10)
-        soup = BeautifulSoup(resp.text, "html.parser")
-        for tag in soup(["script", "style"]):
-            tag.decompose()
-        text = soup.get_text(separator="\n", strip=True)
+        text = format_serpapi_results(serpapi_search(query, num_results=10), max_chars=2500)
 
         # Also try DuckDuckGo
         ddg_url = f"https://html.duckduckgo.com/html/?q=site:linkedin.com/company+\"{company_name}\""
@@ -836,12 +874,10 @@ def lookup_glassdoor(company_name, domain):
         base_name = domain.replace("www.", "").split(".")[0]
 
         try:
-            google_url = f"https://www.google.com/search?q=glassdoor+\"{company_name}\"+reviews+engineers+software+tools+employees"
-            resp = requests.get(google_url, headers=headers, timeout=10)
-            soup = BeautifulSoup(resp.text, "html.parser")
-            for tag in soup(["script", "style"]):
-                tag.decompose()
-            text = soup.get_text(separator="\n", strip=True)
+            text = format_serpapi_results(
+                serpapi_search(f'glassdoor "{company_name}" reviews engineers software tools employees', num_results=10),
+                max_chars=2000
+            )
             all_text += text
             review_count += text.lower().count("glassdoor")
         except:
@@ -863,12 +899,10 @@ def lookup_glassdoor(company_name, domain):
         _time.sleep(0.5)
 
         try:
-            search_url = f"https://www.google.com/search?q=glassdoor.co.uk+{company_name}+reviews+employee+size+software"
-            resp = requests.get(search_url, headers=headers, timeout=10)
-            soup = BeautifulSoup(resp.text, "html.parser")
-            for tag in soup(["script", "style"]):
-                tag.decompose()
-            text = soup.get_text(separator="\n", strip=True)
+            text = format_serpapi_results(
+                serpapi_search(f"glassdoor.co.uk {company_name} reviews employee size software", num_results=10),
+                max_chars=2000
+            )
             all_text += "\n\n" + text
         except:
             pass
@@ -889,12 +923,10 @@ def lookup_glassdoor(company_name, domain):
         _time.sleep(0.5)
 
         try:
-            size_url = f"https://www.google.com/search?q=\"{company_name}\"+employees+size+headquarters+glassdoor+OR+linkedin+OR+indeed"
-            resp = requests.get(size_url, headers=headers, timeout=10)
-            soup = BeautifulSoup(resp.text, "html.parser")
-            for tag in soup(["script", "style"]):
-                tag.decompose()
-            text = soup.get_text(separator="\n", strip=True)
+            text = format_serpapi_results(
+                serpapi_search(f'"{company_name}" employees size headquarters glassdoor OR linkedin OR indeed', num_results=10),
+                max_chars=2000
+            )
             all_text += "\n\n" + text
         except:
             pass
@@ -911,14 +943,9 @@ def lookup_planning_portal(company_name):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         }
-        # Search planning applications via Google
+        # Search planning applications via SerpAPI
         query = f'"{company_name}" planning application structural engineer site:gov.uk OR site:planningportal.co.uk OR site:localplanning'
-        search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
-        resp = requests.get(search_url, headers=headers, timeout=10)
-        soup = BeautifulSoup(resp.text, "html.parser")
-        for tag in soup(["script", "style"]):
-            tag.decompose()
-        text = soup.get_text(separator="\n", strip=True)
+        text = format_serpapi_results(serpapi_search(query, num_results=10), max_chars=2500)
 
         # Also DuckDuckGo
         ddg_url = f"https://html.duckduckgo.com/html/?q=\"{company_name}\"+planning+application+structural"
@@ -1159,7 +1186,6 @@ TYPICAL USE CASES:
 - Earthquake-resistant seismic design
 - Batch processing and parametric design optimisation
 - Industrial structures — factories and plants
-- General structures
 
 VALUE PROPOSITION: Efficiency through automation + accuracy through advanced analysis + modern usability = integrated building design workflow.
 POSITIONING: Best global design tool for building and general structure firms.
@@ -1719,12 +1745,12 @@ with main:
 
         stat.caption("🔍 Crawling website with Firecrawl...")
         
-        # Use cached pages if previously fetched via Google Cache button
+        # Use cached pages if previously fetched via SerpAPI fallback button
         if st.session_state.get("use_cache") and st.session_state.get("cache_pages"):
             pages = st.session_state["cache_pages"]
             st.session_state["use_cache"] = False
             st.session_state["cache_pages"] = None
-            st.success("✅ Using Google Cache content")
+            st.success("✅ Using SerpAPI search results")
         else:
             pages = firecrawl_crawl(website)
         
@@ -1766,12 +1792,12 @@ with main:
                     pages = direct_pages
                     needs_fallback = False
 
-            # Step 3 — Try Google Cache
+            # Step 3 — Try SerpAPI fallback search
             if needs_fallback:
-                stat.caption("🔄 Trying Google Cache...")
-                cache_pages = fetch_google_cache(website)
-                if cache_pages and any(len(p.get("markdown","")) > 500 for p in cache_pages):
-                    st.success(f"✅ Google Cache retrieved {len(cache_pages)} pages")
+                stat.caption("🔄 Trying SerpAPI search...")
+                cache_pages = fetch_serpapi_site_results(website)
+                if cache_pages:
+                    st.success(f"✅ SerpAPI retrieved {len(cache_pages)} results")
                     pages = cache_pages
                     needs_fallback = False
 
@@ -1825,14 +1851,14 @@ with main:
 
                 gc1, gc2 = st.columns(2)
                 with gc1:
-                    if st.button("🔄 Retry Google Cache", use_container_width=True):
-                        cache_pages = fetch_google_cache(website)
-                        if cache_pages and any(len(p.get("markdown","")) > 500 for p in cache_pages):
+                    if st.button("🔄 Retry SerpAPI Search", use_container_width=True):
+                        cache_pages = fetch_serpapi_site_results(website)
+                        if cache_pages:
                             st.session_state["cache_pages"] = cache_pages
                             st.session_state["use_cache"] = True
                             st.rerun()
                         else:
-                            st.error("Google Cache not available for this site")
+                            st.error("SerpAPI search results not available for this site")
 
                 manual_content = st.text_area(
                     "",
@@ -1895,13 +1921,13 @@ with main:
             extra_corpus += f"\n\n[SOURCE: Planning Portal]\n{pp_text}"
             source_summary.append(f"🏗️ Planning Portal — {pp_projects} planning application mentions found, added to projects")
 
-        # If no people found, try Google/LinkedIn people search
+        # If no people found, try SerpAPI/LinkedIn people search
         if len(company_data.get("people", [])) == 0:
-            stat.caption("👥 Searching for people via Google & LinkedIn...")
-            google_text = search_people_via_google(company_name_known, domain_known)
-            if google_text:
-                extra_corpus += f"\n\n[SOURCE: People Search]\n{google_text}"
-                source_summary.append(f"👥 People Search — searched LinkedIn profiles and Google for named engineers at this company")
+            stat.caption("👥 Searching for people via SerpAPI & LinkedIn...")
+            people_search_text = search_people_via_serpapi(company_name_known, domain_known)
+            if people_search_text:
+                extra_corpus += f"\n\n[SOURCE: People Search]\n{people_search_text}"
+                source_summary.append(f"👥 People Search — searched LinkedIn profiles and SerpAPI for named engineers at this company")
 
         # Re-analyse with enriched corpus if extra data found
         if extra_corpus:

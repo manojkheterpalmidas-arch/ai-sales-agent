@@ -604,80 +604,25 @@ def scrape_with_scrapingbee(url):
 
 def search_people_via_serpapi(company_name, domain):
     try:
-        from bs4 import BeautifulSoup
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        }
-
         all_text = ""
 
-        # Search 1 — Site specific DuckDuckGo
-        try:
-            ddg_url = f"https://html.duckduckgo.com/html/?q=site:{domain}+team+OR+engineers+OR+directors+OR+people+OR+staff+OR+bridge+OR+structural+OR+geotechnical+OR+principal+OR+associate+OR+consultant+OR+civil+OR+BIM+OR+FEA"
-            resp = requests.get(ddg_url, headers=headers, timeout=10)
-            soup = BeautifulSoup(resp.text, "html.parser")
-            results = soup.find_all("a", class_="result__snippet")
-            text = "\n".join([r.get_text() for r in results])
-            if len(text) < 200:
-                text = soup.get_text(separator="\n", strip=True)
-            all_text += text
-        except:
-            pass
+        queries = [
+            f"site:{domain} (team OR people OR staff OR leadership OR directors OR engineers OR consultants) (structural OR civil OR bridge OR geotechnical OR BIM OR FEA)",
+            f'site:linkedin.com/in "{company_name}" (engineer OR structural OR civil OR bridge OR geotechnical OR BIM)',
+            f'site:linkedin.com/in "{company_name}" (director OR principal OR associate OR partner OR head OR manager)',
+            f'"{company_name}" (ANSYS OR ABAQUS OR SAP2000 OR ETABS OR STAAD OR LUSAS OR MIDAS OR PLAXIS OR FEM OR FEA)',
+            f'"{company_name}" (hiring OR careers OR jobs OR vacancies OR graduate) (structural OR civil OR BIM OR FEA)',
+            f'"{company_name}" (project OR bridge OR infrastructure OR building OR tunnel OR metro) (engineering OR structural)'
+        ]
 
-        # Search 2 — Site specific SerpAPI
-        try:
-            text = format_serpapi_results(
-                serpapi_search(
-                    f"site:{domain} team OR engineers OR directors OR people OR staff OR bridge OR structural OR geotechnical OR principal OR associate OR consultant OR civil OR BIM OR FEA",
-                    num_results=10
-                ),
-                max_chars=2500
-            )
-            all_text += "\n\n" + text
-        except:
-            pass
-
-        # Search 3 — LinkedIn via SerpAPI
-        try:
-            text = format_serpapi_results(
-                serpapi_search(
-                    f'site:linkedin.com/in "{company_name}" engineer OR director OR structural OR bridge OR geotechnical OR principal OR associate OR consultant OR civil OR architect OR BIM OR FEA OR FEM',
-                    num_results=10
-                ),
-                max_chars=2500
-            )
-            all_text += "\n\n" + text
-        except:
-            pass
-
-        # Search 4 — LinkedIn via DuckDuckGo
-        try:
-            li_ddg = f"https://html.duckduckgo.com/html/?q=site:linkedin.com/in+\"{company_name}\"+engineer+OR+director+OR+structural+OR+bridge+OR+geotechnical+OR+principal+OR+associate+OR+consultant+OR+civil+OR+BIM+OR+FEA"
-            resp = requests.get(li_ddg, headers=headers, timeout=10)
-            soup = BeautifulSoup(resp.text, "html.parser")
-            results = soup.find_all("a", class_="result__snippet")
-            text = "\n".join([r.get_text() for r in results])
-            all_text += "\n\n" + text
-        except:
-            pass
-
-        # Search 5 — LinkedIn senior roles via SerpAPI
-        try:
-            text = format_serpapi_results(
-                serpapi_search(
-                    f'site:linkedin.com/in "{company_name}" senior OR graduate OR technician OR founder OR owner OR manager OR director OR head OR lead OR chartered OR CEng OR MIStructE',
-                    num_results=10
-                ),
-                max_chars=2500
-            )
-            all_text += "\n\n" + text
-        except:
-            pass
+        for q in queries:
+            results = serpapi_search(q, num_results=8)
+            all_text += "\n\n" + format_serpapi_results(results, max_chars=1500)
 
         return all_text[:8000]
     except:
         return ""
+    
 
 def lookup_companies_house(company_name, locations=None):
     try:

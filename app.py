@@ -778,132 +778,52 @@ Active Officers:
 
 def lookup_linkedin_company(company_name):
     try:
-        from bs4 import BeautifulSoup
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        }
-        # Search LinkedIn company via SerpAPI
-        query = f'site:linkedin.com/company "{company_name}" engineers employees'
-        text = format_serpapi_results(serpapi_search(query, num_results=10), max_chars=2500)
+        text = format_serpapi_results(
+            serpapi_search(f'site:linkedin.com/company "{company_name}" engineers employees', num_results=10),
+            max_chars=3000
+        )
 
-        # Also try DuckDuckGo
-        ddg_url = f"https://html.duckduckgo.com/html/?q=site:linkedin.com/company+\"{company_name}\""
-        resp2 = requests.get(ddg_url, headers=headers, timeout=10)
-        soup2 = BeautifulSoup(resp2.text, "html.parser")
-        results = soup2.find_all("a", class_="result__snippet")
-        text += "\n" + "\n".join([r.get_text() for r in results])
-
-        # Extract employee count signal
-        employee_signal = 0
         import re
-        matches = re.findall(r'(\d+[\,\d]*)\s*employees', text.lower())
-        if matches:
-            employee_signal = matches[0].replace(",", "")
+        matches = re.findall(r'(\\d+[\\,\\d]*)\\s*employees', text.lower())
+        employee_signal = matches[0].replace(",", "") if matches else 0
 
-        return text[:3000], employee_signal
+        return text, employee_signal
     except:
         return "", 0
+        
 
-
-def lookup_glassdoor(company_name, domain):
+ddef lookup_glassdoor(company_name, domain):
     try:
-        import time as _time
-        from bs4 import BeautifulSoup
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        }
         all_text = ""
-        review_count = 0
-        base_name = domain.replace("www.", "").split(".")[0]
 
-        try:
-            text = format_serpapi_results(
-                serpapi_search(f'glassdoor "{company_name}" reviews engineers software tools employees', num_results=10),
-                max_chars=2000
-            )
-            all_text += text
-            review_count += text.lower().count("glassdoor")
-        except:
-            pass
+        all_text += format_serpapi_results(
+            serpapi_search(f'glassdoor "{company_name}" reviews engineers software', num_results=10),
+            max_chars=2000
+        )
 
-        _time.sleep(0.5)
+        all_text += "\n\n" + format_serpapi_results(
+            serpapi_search(f'"{company_name}" employees size glassdoor linkedin indeed', num_results=10),
+            max_chars=2000
+        )
 
-        try:
-            ddg_url = f"https://html.duckduckgo.com/html/?q=glassdoor+{base_name}+engineers+reviews+software"
-            resp = requests.get(ddg_url, headers=headers, timeout=10)
-            soup = BeautifulSoup(resp.text, "html.parser")
-            results = soup.find_all("a", class_="result__snippet")
-            text = "\n".join([r.get_text() for r in results])
-            all_text += "\n\n" + text
-            review_count += len(results)
-        except:
-            pass
-
-        _time.sleep(0.5)
-
-        try:
-            text = format_serpapi_results(
-                serpapi_search(f"glassdoor.co.uk {company_name} reviews employee size software", num_results=10),
-                max_chars=2000
-            )
-            all_text += "\n\n" + text
-        except:
-            pass
-
-        _time.sleep(0.5)
-
-        try:
-            indeed_url = f"https://html.duckduckgo.com/html/?q=indeed.com+\"{company_name}\"+reviews+engineer+software+tools"
-            resp = requests.get(indeed_url, headers=headers, timeout=10)
-            soup = BeautifulSoup(resp.text, "html.parser")
-            results = soup.find_all("a", class_="result__snippet")
-            text = "\n".join([r.get_text() for r in results])
-            all_text += "\n\n" + text
-            review_count += len(results)
-        except:
-            pass
-
-        _time.sleep(0.5)
-
-        try:
-            text = format_serpapi_results(
-                serpapi_search(f'"{company_name}" employees size headquarters glassdoor OR linkedin OR indeed', num_results=10),
-                max_chars=2000
-            )
-            all_text += "\n\n" + text
-        except:
-            pass
+        review_count = all_text.lower().count("glassdoor")
 
         return all_text[:5000], review_count
     except:
         return "", 0
 
-
 def lookup_planning_portal(company_name):
     try:
-        from bs4 import BeautifulSoup
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        }
-        # Search planning applications via SerpAPI
-        query = f'"{company_name}" planning application structural engineer site:gov.uk OR site:planningportal.co.uk OR site:localplanning'
-        text = format_serpapi_results(serpapi_search(query, num_results=10), max_chars=2500)
-
-        # Also DuckDuckGo
-        ddg_url = f"https://html.duckduckgo.com/html/?q=\"{company_name}\"+planning+application+structural"
-        resp2 = requests.get(ddg_url, headers=headers, timeout=10)
-        soup2 = BeautifulSoup(resp2.text, "html.parser")
-        results = soup2.find_all("a", class_="result__snippet")
-        text += "\n" + "\n".join([r.get_text() for r in results])
+        text = format_serpapi_results(
+            serpapi_search(f'"{company_name}" planning application structural engineer', num_results=10),
+            max_chars=3000
+        )
 
         project_count = text.lower().count("planning")
-
-        return text[:3000], project_count
+        return text, project_count
     except:
         return "", 0
+
 
 def firecrawl_crawl(url, max_pages=30):
     try:

@@ -496,6 +496,22 @@ def format_serpapi_results(results, max_chars=4000):
     return "\n".join(lines)[:max_chars]
 
 
+def extract_employee_count_from_text(text):
+    if not text:
+        return ""
+    normalized = re.sub(r"\s+", " ", text)
+    patterns = [
+        r"(\d[\d,]*(?:\+)?(?:\s*[-â€“]\s*\d[\d,]*(?:\+)?)?)\s+(?:employees|staff)",
+        r"(?:company size|employees)[:\s]+(\d[\d,]*(?:\+)?(?:\s*[-â€“]\s*\d[\d,]*(?:\+)?)?)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, normalized, re.IGNORECASE)
+        if match:
+            count = re.sub(r"\s*[-â€“]\s*", "-", match.group(1).strip())
+            return f"{count} employees"
+    return ""
+
+
 def fetch_serpapi_site_results(url):
     from urllib.parse import urlparse
 
@@ -798,20 +814,21 @@ Active Officers:
 
 def lookup_linkedin_company(company_name):
     try:
-        text = format_serpapi_results(
-            serpapi_search(f'site:linkedin.com/company "{company_name}" engineers employees', num_results=10),
-            max_chars=3000
-        )
+        results = []
+        queries = [
+            f'site:linkedin.com/company "{company_name}" employees',
+            f'"{company_name}" "employees" "LinkedIn"',
+            f'"{company_name}" "company size"',
+        ]
+        for query in queries:
+            results.extend(serpapi_search(query, num_results=6))
 
-        import re
-        matches = re.findall(r'(\\d+[\\,\\d]*)\\s*employees', text.lower())
-        employee_signal = matches[0].replace(",", "") if matches else 0
+        text = format_serpapi_results(results, max_chars=5000)
+        employee_signal = extract_employee_count_from_text(text)
 
         return text, employee_signal
     except:
-        return "", 0
-
-
+        return "", ""
 def lookup_glassdoor(company_name, domain):
     try:
         all_text = ""
@@ -1804,15 +1821,20 @@ with main:
             extra_corpus += f"\n\n[SOURCE: Company Registry]\n{ch_text}"
             source_summary.append(f"Company Registry - searched Companies House (UK), OpenCorporates (EU) and TED Tenders, {ch_directors} director entries found")
 
-        li_text, li_employees = lookup_results.get("linkedin", ("", 0))
+        li_text, li_employees = lookup_results.get("linkedin", ("", ""))
         if li_text:
             extra_corpus += f"\n\n[SOURCE: LinkedIn]\n{li_text}"
-            source_summary.append(f"LinkedIn - searched company page for employee count and signals ({li_employees} employees)" if li_employees else "LinkedIn - searched company page, employee count not found publicly")
+            source_summary.append(f"LinkedIn - employee count signal found: {li_employees}" if li_employees else "LinkedIn - searched company page, employee count not found publicly")
+            if li_employees and not company_data.get("employee_count"):
+                company_data["employee_count"] = li_employees
 
         gd_text, gd_reviews = lookup_results.get("reviews", ("", 0))
+        gd_employees = extract_employee_count_from_text(gd_text)
         if gd_text:
             extra_corpus += f"\n\n[SOURCE: Glassdoor & Indeed Reviews]\n{gd_text}"
-        source_summary.append(f"Glassdoor & Indeed - {gd_reviews} employee review snippets found, added to full analysis")
+        if gd_employees and not company_data.get("employee_count"):
+            company_data["employee_count"] = gd_employees
+        source_summary.append(f"Glassdoor & Indeed - employee count signal found: {gd_employees}" if gd_employees else f"Glassdoor & Indeed - {gd_reviews} employee review snippets found, added to full analysis")
 
         pp_text, pp_projects = lookup_results.get("planning", ("", 0))
         if pp_text:
@@ -1836,6 +1858,11 @@ with main:
             for key in ["people", "projects", "locations", "employee_count", "founded"]:
                 if company_data2.get(key) and len(str(company_data2.get(key))) > len(str(company_data.get(key, ""))):
                     company_data[key] = company_data2[key]
+
+        if not company_data.get("employee_count"):
+            fallback_employee_count = extract_employee_count_from_text(extra_corpus)
+            if fallback_employee_count:
+                company_data["employee_count"] = fallback_employee_count
 
         prog.progress(75)
 

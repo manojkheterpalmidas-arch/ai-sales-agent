@@ -5,7 +5,8 @@ import json
 import re
 from supabase import create_client, Client
 from datetime import datetime, timezone, timedelta
-
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from requests.adapters import HTTPAdapter
 def now_gmt2():
     return datetime.now(timezone.utc) + timedelta(hours=2)
 
@@ -20,6 +21,16 @@ def get_supabase() -> Client:
 
 supabase = get_supabase()
 
+@st.cache_resource
+def get_http_session():
+    session = requests.Session()
+    adapter = HTTPAdapter(pool_connections=20, pool_maxsize=20)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    session.headers.update({"User-Agent": "Mozilla/5.0"})
+    return session
+
+http = get_http_session()
 # ── STORAGE FUNCTIONS ─────────────────────────────────────────────────────────
 def load_history():
     try:
@@ -303,7 +314,7 @@ deepseek = OpenAI(api_key=st.secrets["DEEPSEEK_API_KEY"], base_url="https://api.
 # ── FIRECRAWL FUNCTIONS ───────────────────────────────────────────────────────
 def firecrawl_scrape_single(url):
     try:
-        resp = requests.post(
+        resp = http.post(
             "https://api.firecrawl.dev/v1/credits",
             headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}", "Content-Type": "application/json"},
             json={"url": url, "formats": ["markdown"]}, timeout=20
@@ -325,7 +336,7 @@ def firecrawl_multi_scrape(base_url):
             return None
         visited.add(url)
         try:
-            resp = requests.post(
+            resp = http.post(
                 "https://api.firecrawl.dev/v1/scrape",
                 headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}", "Content-Type": "application/json"},
                 json={"url": url, "formats": ["markdown"]}, timeout=20
@@ -343,7 +354,7 @@ def firecrawl_multi_scrape(base_url):
     results.append(home)
 
     try:
-        html_resp = requests.get(base_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        html_resp = http.get(base_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
         soup = BeautifulSoup(html_resp.text, "html.parser")
         domain = urlparse(base_url).netloc
         priority_keywords = ["people","team","our-team","staff","leadership","directors","who-we-are","about","careers","jobs","vacancies","join","projects","services","what-we-do","contact"]
@@ -385,7 +396,7 @@ def direct_fetch(url, max_subpages=14):
             "Accept": "text/html,application/xhtml+xml,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Cookie": "cookielawinfo-checkbox-necessary=yes; cookielawinfo-checkbox-analytics=yes; cookielawinfo-checkbox-functional=yes; cookielawinfo-checkbox-performance=yes; cookielawinfo-checkbox-advertisement=yes; viewed_cookie_policy=yes; cookie_consent=accepted; wordpress_gdpr_cookies_allowed=all; gdpr=1; euconsent=1"
         }
-        resp = requests.get(url, headers=headers, timeout=15)
+        resp = http.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(resp.text, "html.parser")
         for tag in soup(["script", "style", "noscript", "iframe"]):
             tag.decompose()
@@ -424,17 +435,25 @@ def direct_fetch(url, max_subpages=14):
 
         sorted_links = sorted(set(all_links), key=priority_score)
 
-        for link in sorted_links[:max_subpages]:
+        def fetch_subpage(link):
             try:
-                sub = requests.get(link, headers=headers, timeout=10)
+                sub = http.get(link, headers=headers, timeout=10)
                 sub_soup = BeautifulSoup(sub.text, "html.parser")
                 for tag in sub_soup(["script", "style", "noscript", "iframe"]):
                     tag.decompose()
                 sub_text = sub_soup.get_text(separator="\n", strip=True)
                 if len(sub_text) > 200:
-                    results.append({"url": link, "markdown": sub_text})
+                    return {"url": link, "markdown": sub_text}
             except:
-                pass
+                return None
+            return None
+
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            futures = [executor.submit(fetch_subpage, link) for link in sorted_links[:max_subpages]]
+            for future in as_completed(futures):
+                page = future.result()
+                if page:
+                    results.append(page)
         return results
     except:
         return []
@@ -449,7 +468,7 @@ def serpapi_search(query, num_results=10):
         return []
 
     try:
-        resp = requests.get(
+        resp = http.get(
             "https://serpapi.com/search.json",
             params={
                 "engine": "google",
@@ -543,7 +562,7 @@ def scrape_with_scrapingbee(url):
                 return None
             visited.add(target_url)
             try:
-                resp = requests.get(
+                resp = http.get(
                     "https://app.scrapingbee.com/api/v1/",
                     params={**headers_sb, "url": target_url},
                     timeout=30
@@ -591,10 +610,12 @@ def scrape_with_scrapingbee(url):
             sorted_links = sorted(set(links), key=priority_score)
 
             # Scrape up to 5 priority subpages
-            for link in sorted_links[:5]:
-                result, _ = sb_scrape(link)
-                if result:
-                    results.append(result)
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                futures = [executor.submit(sb_scrape, link) for link in sorted_links[:5]]
+                for future in as_completed(futures):
+                    result, _ = future.result()
+                    if result:
+                        results.append(result)
 
         return results
 
@@ -705,7 +726,7 @@ def lookup_companies_house(company_name, locations=None):
         if is_uk or (not is_uk and not is_eu):
             try:
                 # Search via Companies House API
-                search_resp = requests.get(
+                search_resp = http.get(
                     f"https://api.company-information.service.gov.uk/search/companies?q={company_name.replace(' ', '+')}",
                     auth=(st.secrets.get("COMPANIES_HOUSE_KEY", ""), ""),
                     timeout=10
@@ -714,7 +735,7 @@ def lookup_companies_house(company_name, locations=None):
                 if results:
                     company_number = results[0].get("company_number", "")
                     # Get officers
-                    officers_resp = requests.get(
+                    officers_resp = http.get(
                         f"https://api.company-information.service.gov.uk/company/{company_number}/officers",
                         auth=(st.secrets.get("COMPANIES_HOUSE_KEY", ""), ""),
                         timeout=10
@@ -742,12 +763,12 @@ Active Officers:
         if is_eu or (not is_uk and not is_eu):
             try:
                 oc_url = f"https://opencorporates.com/companies?q={company_name.replace(' ', '+')}&utf8=✓"
-                resp = requests.get(oc_url, headers=headers, timeout=10)
+                resp = http.get(oc_url, headers=headers, timeout=10)
                 soup = BeautifulSoup(resp.text, "html.parser")
                 result = soup.find("a", class_="company_search_result")
                 if result:
                     company_url = "https://opencorporates.com" + result["href"]
-                    resp2 = requests.get(company_url, headers=headers, timeout=10)
+                    resp2 = http.get(company_url, headers=headers, timeout=10)
                     soup2 = BeautifulSoup(resp2.text, "html.parser")
                     text = soup2.get_text(separator="\n", strip=True)
                     director_count += text.lower().count("director")
@@ -758,7 +779,7 @@ Active Officers:
         # ── EU Tenders — TED Europa ───────────────────────────────────────
         try:
             ted_url = f"https://ted.europa.eu/en/search?scope=NOTICE&query={company_name.replace(' ', '+')}&sortColumn=ND&sortOrder=DESC"
-            resp = requests.get(ted_url, headers=headers, timeout=10)
+            resp = http.get(ted_url, headers=headers, timeout=10)
             soup = BeautifulSoup(resp.text, "html.parser")
             for tag in soup(["script", "style"]):
                 tag.decompose()
@@ -827,7 +848,7 @@ def lookup_planning_portal(company_name):
 def firecrawl_crawl(url, max_pages=30):
     try:
         # First try scraping with actions to handle cookie popups
-        action_resp = requests.post(
+        action_resp = http.post(
             "https://api.firecrawl.dev/v1/scrape",
             headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}", "Content-Type": "application/json"},
             json={
@@ -848,7 +869,7 @@ def firecrawl_crawl(url, max_pages=30):
             # Got homepage, now crawl the rest
             results = [{"url": url, "markdown": homepage_md}]
             try:
-                resp = requests.post(
+                resp = http.post(
                     "https://api.firecrawl.dev/v1/crawl",
                     headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}", "Content-Type": "application/json"},
                     json={"url": url, "limit": max_pages, "scrapeOptions": {"formats": ["markdown"]}}, timeout=30
@@ -858,7 +879,7 @@ def firecrawl_crawl(url, max_pages=30):
                     import time
                     for _ in range(40):
                         time.sleep(3)
-                        poll = requests.get(
+                        poll = http.get(
                             f"https://api.firecrawl.dev/v1/crawl/{job_id}",
                             headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}"},
                             timeout=15
@@ -879,7 +900,7 @@ def firecrawl_crawl(url, max_pages=30):
             return results
 
         # Action scrape didn't work, try normal crawl
-        resp = requests.post(
+        resp = http.post(
             "https://api.firecrawl.dev/v1/crawl",
             headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}", "Content-Type": "application/json"},
             json={"url": url, "limit": max_pages, "scrapeOptions": {"formats": ["markdown"]}}, timeout=30
@@ -891,7 +912,7 @@ def firecrawl_crawl(url, max_pages=30):
         import time
         for _ in range(36):
             time.sleep(5)
-            poll = requests.get(
+            poll = http.get(
                 f"https://api.firecrawl.dev/v1/crawl/{job_id}",
                 headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}"},
                 timeout=15
@@ -913,11 +934,12 @@ def firecrawl_crawl(url, max_pages=30):
     except:
         return firecrawl_multi_scrape(url)
 
-def get_firecrawl_credits():
+@st.cache_data(ttl=300)
+def get_firecrawl_credits(firecrawl_key):
     try:
-        resp = requests.get(
+        resp = http.get(
             "https://api.firecrawl.dev/v1/team/credits",
-            headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}"},
+            headers={"Authorization": f"Bearer {firecrawl_key}"},
             timeout=10
         )
         data = resp.json()
@@ -941,8 +963,7 @@ def build_corpus(pages):
 # ── AI ────────────────────────────────────────────────────────────────────────
 def ask_deepseek(system, user, max_tokens=2000, temperature=0.1, api_key=None):
     try:
-        key = api_key or st.secrets["DEEPSEEK_API_KEY"]
-        client = OpenAI(api_key=key, base_url="https://api.deepseek.com")
+        client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com") if api_key else deepseek
         resp = client.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
@@ -1422,7 +1443,7 @@ with col_logo:
     </div>
     """, unsafe_allow_html=True)
 with col_user:
-    credits = get_firecrawl_credits()
+    credits = get_firecrawl_credits(st.session_state['firecrawl_key'])
     credit_display = f"⚡ {credits} credits" if credits is not None else "⚡ —"
     st.markdown(f"""
     <div style='text-align:right;padding-top:4px;'>
@@ -1752,39 +1773,51 @@ with main:
         company_data = safe_json(company_raw)
         prog.progress(60)
 
-        # ── ADDITIONAL SOURCE LOOKUPS (Option B — after company name known) ──
+        # Additional source lookups (after company name known)
         company_name_known = company_data.get("company_name", "")
         domain_known       = extract_domain(website)
         extra_corpus       = ""
         source_summary     = []
 
-        stat.caption("📋 Checking Companies House...")
-        ch_text, ch_directors = lookup_companies_house(
-            company_name_known,
-            locations=company_data.get("locations", [])
-        )
+        stat.caption("Checking additional sources...")
+        lookup_jobs = {
+            "company_registry": (lookup_companies_house, (company_name_known,), {"locations": company_data.get("locations", [])}),
+            "linkedin": (lookup_linkedin_company, (company_name_known,), {}),
+            "reviews": (lookup_glassdoor, (company_name_known, domain_known), {}),
+            "planning": (lookup_planning_portal, (company_name_known,), {}),
+        }
+        lookup_results = {}
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            future_map = {
+                executor.submit(func, *args, **kwargs): name
+                for name, (func, args, kwargs) in lookup_jobs.items()
+            }
+            for future in as_completed(future_map):
+                name = future_map[future]
+                try:
+                    lookup_results[name] = future.result()
+                except:
+                    lookup_results[name] = ("", 0)
+
+        ch_text, ch_directors = lookup_results.get("company_registry", ("", 0))
         if ch_text:
             extra_corpus += f"\n\n[SOURCE: Company Registry]\n{ch_text}"
-            source_summary.append(f"📋 Company Registry — searched Companies House (UK), OpenCorporates (EU) and TED Tenders, {ch_directors} director entries found")
+            source_summary.append(f"Company Registry - searched Companies House (UK), OpenCorporates (EU) and TED Tenders, {ch_directors} director entries found")
 
-        stat.caption("💼 Checking LinkedIn...")
-        li_text, li_employees = lookup_linkedin_company(company_name_known)
+        li_text, li_employees = lookup_results.get("linkedin", ("", 0))
         if li_text:
             extra_corpus += f"\n\n[SOURCE: LinkedIn]\n{li_text}"
-            source_summary.append(f"💼 LinkedIn — searched company page for employee count and signals ({li_employees} employees)" if li_employees else "💼 LinkedIn — searched company page, employee count not found publicly")
+            source_summary.append(f"LinkedIn - searched company page for employee count and signals ({li_employees} employees)" if li_employees else "LinkedIn - searched company page, employee count not found publicly")
 
-        stat.caption("⭐ Checking Glassdoor & Indeed...")
-        gd_text, gd_reviews = lookup_glassdoor(company_name_known, domain_known)
+        gd_text, gd_reviews = lookup_results.get("reviews", ("", 0))
         if gd_text:
             extra_corpus += f"\n\n[SOURCE: Glassdoor & Indeed Reviews]\n{gd_text}"
-        source_summary.append(f"⭐ Glassdoor & Indeed — {gd_reviews} employee review snippets found, added to full analysis")
+        source_summary.append(f"Glassdoor & Indeed - {gd_reviews} employee review snippets found, added to full analysis")
 
-        stat.caption("🏗️ Checking planning applications...")
-        pp_text, pp_projects = lookup_planning_portal(company_name_known)
+        pp_text, pp_projects = lookup_results.get("planning", ("", 0))
         if pp_text:
             extra_corpus += f"\n\n[SOURCE: Planning Portal]\n{pp_text}"
-            source_summary.append(f"🏗️ Planning Portal — {pp_projects} planning application mentions found, added to projects")
-
+            source_summary.append(f"Planning Portal - {pp_projects} planning application mentions found, added to projects")
         # If no people found, try SerpAPI/LinkedIn people search
         if len(company_data.get("people", [])) == 0:
             stat.caption("👥 Searching for people via SerpAPI & LinkedIn...")

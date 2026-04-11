@@ -371,7 +371,32 @@ html, body, [class*="css"], .stApp { background: var(--ui-bg) !important; }
 }
 .score-badge, .pill-tag { border-radius: 8px !important; }
 .sec-label { color: var(--ui-muted) !important; }
-</style>
+
+/* Caret visibility fix */
+.stTextInput input,
+.stTextArea textarea,
+div[data-baseweb="input"] input,
+div[data-baseweb="textarea"] textarea,
+input[type="text"],
+input[type="password"],
+input[type="search"],
+textarea {
+    caret-color: #111111 !important;
+    color: #111111 !important;
+    -webkit-text-fill-color: #111111 !important;
+}
+.stTextInput input:focus,
+.stTextArea textarea:focus,
+div[data-baseweb="input"] input:focus,
+div[data-baseweb="textarea"] textarea:focus,
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="search"]:focus,
+textarea:focus {
+    caret-color: #111111 !important;
+    color: #111111 !important;
+    -webkit-text-fill-color: #111111 !important;
+}</style>
 """, unsafe_allow_html=True)
 
 # ── CLIENTS ───────────────────────────────────────────────────────────────────

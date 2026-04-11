@@ -305,6 +305,199 @@ a:hover { color: #1d4ed8 !important; }
 [data-testid="stFormSubmitButton"] button:hover {
     background: #374151 !important;
 }
+
+/* UI polish layer */
+:root {
+    --midas-bg: #f7f8fa;
+    --midas-surface: #ffffff;
+    --midas-surface-soft: #fbfcfd;
+    --midas-border: #e7e9ee;
+    --midas-border-soft: #f0f2f5;
+    --midas-ink: #171717;
+    --midas-muted: #69707d;
+    --midas-faint: #9aa1ad;
+    --midas-red: #c92f1f;
+    --midas-red-soft: #fff3f1;
+    --midas-amber: #b7791f;
+    --midas-green: #1f7a55;
+    --midas-shadow: 0 12px 32px rgba(17, 24, 39, 0.06);
+    --midas-shadow-soft: 0 6px 18px rgba(17, 24, 39, 0.045);
+}
+
+html, body, [class*="css"] { background: var(--midas-bg) !important; }
+.stApp { background: var(--midas-bg) !important; }
+.block-container { padding: 1.25rem 2rem 3.25rem !important; max-width: 1500px !important; }
+@media (max-width: 900px) {
+    .block-container { padding: 1rem 1rem 2.5rem !important; }
+}
+
+.midas-topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 18px;
+    background: rgba(255,255,255,0.92);
+    border: 1px solid var(--midas-border);
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-bottom: 18px;
+    box-shadow: var(--midas-shadow-soft);
+}
+.midas-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.midas-mark {
+    width: 34px; height: 34px; border-radius: 8px;
+    background: var(--midas-ink); color: #fff !important;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 800; letter-spacing: 0.03em;
+}
+.midas-title { font-size: 19px; font-weight: 760; letter-spacing: 0.02em; color: var(--midas-ink) !important; line-height: 1.1; }
+.midas-subtitle { font-size: 11px; color: var(--midas-muted) !important; margin-top: 3px; letter-spacing: 0.05em; text-transform: uppercase; }
+.midas-topmeta { text-align: right; min-width: 155px; }
+.midas-user { font-size: 12px; color: var(--midas-muted) !important; font-weight: 600; }
+.midas-credit {
+    display: inline-block; margin-top: 5px; padding: 4px 8px;
+    border: 1px solid var(--midas-border); border-radius: 8px;
+    background: var(--midas-surface-soft); color: var(--midas-ink) !important;
+    font-size: 11px; font-weight: 650;
+}
+
+[data-testid="stMetricValue"] { font-size: 25px !important; letter-spacing: 0 !important; }
+[data-testid="metric-container"] {
+    background: var(--midas-surface) !important;
+    border: 1px solid var(--midas-border) !important;
+    border-radius: 8px !important;
+    padding: 15px 17px !important;
+    box-shadow: var(--midas-shadow-soft);
+    transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+[data-testid="metric-container"]:hover {
+    transform: translateY(-1px);
+    border-color: #d8dce3 !important;
+    box-shadow: var(--midas-shadow);
+}
+
+.stButton > button,
+[data-testid="stFormSubmitButton"] button {
+    border-radius: 8px !important;
+    box-shadow: 0 7px 16px rgba(17, 17, 17, 0.12) !important;
+    transform: translateY(0);
+}
+.stButton > button:hover,
+[data-testid="stFormSubmitButton"] button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 20px rgba(17, 17, 17, 0.16) !important;
+}
+.stButton > button:active,
+[data-testid="stFormSubmitButton"] button:active {
+    transform: translateY(0);
+    box-shadow: 0 4px 10px rgba(17, 17, 17, 0.14) !important;
+}
+.stDownloadButton > button {
+    background: var(--midas-surface) !important;
+    border-color: var(--midas-border) !important;
+    border-radius: 8px !important;
+}
+.stDownloadButton > button:hover {
+    background: var(--midas-surface-soft) !important;
+    border-color: #d5dae2 !important;
+}
+
+.stTextInput > div > div > input,
+.stTextArea > div > div > textarea {
+    border-color: var(--midas-border) !important;
+    border-radius: 8px !important;
+    background: var(--midas-surface) !important;
+    transition: border-color 0.14s ease, box-shadow 0.14s ease, background 0.14s ease;
+}
+.stTextInput > div > div > input:focus,
+.stTextArea > div > div > textarea:focus {
+    border-color: var(--midas-ink) !important;
+    box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.08) !important;
+}
+
+.stTabs [data-baseweb="tab-list"] {
+    background: var(--midas-surface) !important;
+    border: 1px solid var(--midas-border) !important;
+    border-radius: 8px !important;
+    padding: 4px !important;
+    gap: 3px !important;
+    box-shadow: var(--midas-shadow-soft);
+}
+.stTabs [data-baseweb="tab"] {
+    border-radius: 8px !important;
+    border-bottom: 0 !important;
+    margin-bottom: 0 !important;
+    padding: 9px 15px !important;
+    transition: background 0.14s ease, color 0.14s ease;
+}
+.stTabs [data-baseweb="tab"]:hover { background: var(--midas-surface-soft) !important; color: var(--midas-ink) !important; }
+.stTabs [aria-selected="true"] {
+    background: var(--midas-ink) !important;
+    color: #ffffff !important;
+    border-bottom-color: transparent !important;
+}
+.stTabs [aria-selected="true"] * { color: #ffffff !important; }
+.stTabs [data-baseweb="tab-panel"] { padding-top: 26px !important; }
+
+.midas-report-hero {
+    background: var(--midas-surface);
+    border: 1px solid var(--midas-border);
+    border-radius: 8px;
+    padding: 22px 24px;
+    margin-bottom: 18px;
+    box-shadow: var(--midas-shadow);
+}
+.midas-report-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 22px; }
+.midas-company-title { font-size: 30px; font-weight: 800; line-height: 1.08; color: var(--midas-ink) !important; margin-bottom: 12px; }
+.midas-hero-meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+.midas-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--midas-border); border-radius: 8px;
+    padding: 6px 10px; background: var(--midas-surface-soft);
+    color: var(--midas-muted) !important; font-size: 12px; font-weight: 650;
+}
+.midas-confidence { color: var(--midas-ink) !important; }
+.midas-conf-reason { color: var(--midas-muted) !important; font-size: 13px; line-height: 1.55; margin-bottom: 8px; }
+.midas-score-reason { color: #3f4652 !important; font-size: 14px; line-height: 1.65; max-width: 980px; }
+.midas-timestamp { color: var(--midas-faint) !important; font-size: 11px; white-space: nowrap; padding-top: 2px; }
+
+.insight-card, .signal-card {
+    background: var(--midas-surface) !important;
+    border-color: var(--midas-border) !important;
+    box-shadow: 0 2px 8px rgba(17, 24, 39, 0.025);
+    transition: transform 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease;
+}
+.insight-card:hover, .signal-card:hover {
+    transform: translateY(-1px);
+    border-color: #d9dee6 !important;
+    box-shadow: var(--midas-shadow-soft);
+}
+.sec-label { color: var(--midas-muted) !important; letter-spacing: 0.075em !important; margin-top: 2px; }
+.sec-label::after { background: var(--midas-border) !important; }
+.pill-tag { border-radius: 8px !important; font-weight: 650; padding: 5px 10px !important; }
+.pill-red { color: var(--midas-red) !important; background: var(--midas-red-soft) !important; border-color: #f3beb7 !important; }
+.pill-amber { color: var(--midas-amber) !important; background: #fff8e8 !important; border-color: #f2d99a !important; }
+.score-badge { border-radius: 8px !important; padding: 6px 12px !important; vertical-align: middle; }
+.score-hot { background: #fff3f1 !important; color: var(--midas-red) !important; border-color: #f2bbb3 !important; }
+.score-warm { background: #fff8e8 !important; color: var(--midas-amber) !important; border-color: #f2d99a !important; }
+.score-cold { background: #f4f6f8 !important; color: var(--midas-muted) !important; border-color: var(--midas-border) !important; }
+.av { border-radius: 8px !important; background: var(--midas-ink) !important; box-shadow: inset 0 -8px 16px rgba(255,255,255,0.05); }
+
+.stAlert {
+    border-radius: 8px !important;
+    border: 1px solid var(--midas-border) !important;
+    box-shadow: var(--midas-shadow-soft);
+}
+.streamlit-expanderHeader {
+    border-color: var(--midas-border) !important;
+    box-shadow: var(--midas-shadow-soft);
+}
+
+@media (max-width: 760px) {
+    .midas-topbar, .midas-report-row { flex-direction: column; align-items: flex-start; }
+    .midas-topmeta { text-align: left; min-width: 0; }
+    .midas-company-title { font-size: 24px; }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1473,32 +1666,26 @@ def export_pdf(company, cd, sd):
 
 
 # ── TOP BAR ───────────────────────────────────────────────────────────────────
-st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-col_logo, col_user = st.columns([6, 1])
-with col_logo:
-    st.markdown("""
-    <div style='display:flex;align-items:center;gap:12px;padding:4px 0 20px;'>
-        <div style='font-family:Inter,sans-serif;font-size:20px;font-weight:700;color:#1a1a1a;letter-spacing:0.05em;'>
-            MIDAS <span style='color:#1a1a1a;'> </span> PRESALES INTEL
-        </div>
-        <div style='font-family:"Inter",sans-serif;font-size:10px;color:#9ca3af;letter-spacing:0.1em;
-             background:#f9fafb;border:1px solid #e5e7eb;padding:3px 10px;border-radius:20px;'>
-            SALES INTELLIGENCE
+firecrawl_key = st.session_state.get("firecrawl_key", "")
+credits = get_firecrawl_credits(firecrawl_key)
+credit_display = f"Firecrawl: {credits} credits" if credits is not None else ("Firecrawl: checking..." if firecrawl_key else "Firecrawl: no key")
+st.markdown(f"""
+<div class="midas-topbar">
+    <div class="midas-brand">
+        <div class="midas-mark">M</div>
+        <div>
+            <div class="midas-title">MIDAS Presales Intel</div>
+            <div class="midas-subtitle">Sales intelligence workspace</div>
         </div>
     </div>
-    """, unsafe_allow_html=True)
-with col_user:
-    firecrawl_key = st.session_state.get("firecrawl_key", "")
-    credits = get_firecrawl_credits(firecrawl_key)
-    credit_display = f"Firecrawl: {credits} credits" if credits is not None else ("Firecrawl: checking..." if firecrawl_key else "Firecrawl: no key")
-    st.markdown(f"""
-    <div style='text-align:right;padding-top:4px;'>
-        <div style='font-size:12px;color:#6b7280;font-family:"Inter",sans-serif;'>Manoj | MIDAS IT</div>
-        <div style='font-size:11px;color:#1a1a1a;font-family:"Inter",sans-serif;margin-top:2px;'>{credit_display}</div>
+    <div class="midas-topmeta">
+        <div class="midas-user">Manoj | MIDAS IT</div>
+        <div class="midas-credit">{credit_display}</div>
     </div>
-    """, unsafe_allow_html=True)
-    
-# ── FIRECRAWL KEY INPUT ───────────────────────────────────────────────────────
+</div>
+""", unsafe_allow_html=True)
+
+# -- FIRECRAWL KEY INPUT -------------------------------------------------------
 if not st.session_state.get("firecrawl_key"):
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
     st.markdown('<div class="sec-label">API Configuration</div>', unsafe_allow_html=True)
@@ -1943,24 +2130,24 @@ with main:
         conf         = company_data.get("confidence", "Medium")
         conf_reason  = company_data.get("confidence_reason", "")
 
-        hc1, hc2 = st.columns([4, 1])
-        with hc1:
-            st.markdown(f"""
-            <div style='margin-bottom:6px;'>
-                <span style='font-family:Inter,sans-serif;font-size:26px;font-weight:700;color:#1a1a1a;'>{company_name}</span>
-                &nbsp;&nbsp;
-                <span class='score-badge {score_cls(score)}'>{score_emoji(score)} {score} Lead</span>
+        st.markdown(f"""
+        <div class="midas-report-hero">
+            <div class="midas-report-row">
+                <div>
+                    <div class="midas-company-title">{company_name}</div>
+                    <div class="midas-hero-meta">
+                        <span class="score-badge {score_cls(score)}">{score_emoji(score)} {score} Lead</span>
+                        <span class="midas-chip">Offices: {locs}</span>
+                        <span class="midas-chip">Employees: {emp}</span>
+                        <span class="midas-chip midas-confidence">Confidence: {conf}</span>
+                    </div>
+                    <div class="midas-conf-reason">{conf_reason}</div>
+                    <div class="midas-score-reason">{score_reason}</div>
+                </div>
+                <div class="midas-timestamp">{now_gmt2().strftime('%d %b %Y %H:%M')}</div>
             </div>
-            <div style='font-family:"Inter",sans-serif;font-size:11px;color:#6b7280;margin-bottom:6px;'>📍 {locs}</div>
-            <div style='font-family:"Inter",sans-serif;font-size:11px;color:#6b7280;margin-bottom:4px;'>
-                👥 {emp} &nbsp;·&nbsp; Confidence: <b style='color:#1a1a1a;'>{conf}</b>
-            </div>
-            <div style='font-size:12px;color:#9ca3af;font-style:italic;margin-bottom:6px;'>{conf_reason}</div>
-            <div style='font-size:14px;color:#4b5563;'>{score_reason}</div>
-            """, unsafe_allow_html=True)
-        with hc2:
-            st.markdown(f"<div style='text-align:right;font-family:\"Inter\",sans-serif;font-size:11px;color:#9ca3af;padding-top:8px;'>{now_gmt2().strftime('%d %b %Y %H:%M')}</div>", unsafe_allow_html=True)
-        st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+        </div>
+        """, unsafe_allow_html=True)
 
         m1, m2, m3, m4, m5 = st.columns(5)
         m1.metric("People Identified", len(company_data.get("people", [])))

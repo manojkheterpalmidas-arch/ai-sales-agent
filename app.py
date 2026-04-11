@@ -951,16 +951,44 @@ def firecrawl_crawl(url, max_pages=30):
     except:
         return firecrawl_multi_scrape(url)
 
+def extract_credit_value(data):
+    if isinstance(data, dict):
+        for key in ("credits", "remaining", "remainingCredits", "remaining_credits", "availableCredits", "available_credits"):
+            value = data.get(key)
+            if value not in (None, ""):
+                return value
+        for value in data.values():
+            found = extract_credit_value(value)
+            if found not in (None, ""):
+                return found
+    elif isinstance(data, list):
+        for item in data:
+            found = extract_credit_value(item)
+            if found not in (None, ""):
+                return found
+    return None
+
+
 @st.cache_data(ttl=300)
 def get_firecrawl_credits(firecrawl_key):
+    if not firecrawl_key:
+        return None
     try:
+        headers = {"Authorization": f"Bearer {firecrawl_key}"}
         resp = http.get(
-            "https://api.firecrawl.dev/v1/team/credits",
-            headers={"Authorization": f"Bearer {firecrawl_key}"},
+            "https://api.firecrawl.dev/v1/team/credit-usage",
+            headers=headers,
             timeout=10
         )
-        data = resp.json()
-        return data.get("credits", None)
+        if resp.status_code == 404:
+            resp = http.get(
+                "https://api.firecrawl.dev/v2/team/credit-usage",
+                headers=headers,
+                timeout=10
+            )
+        if resp.status_code >= 400:
+            return None
+        return extract_credit_value(resp.json())
     except:
         return None
 # ── TEXT PREP ─────────────────────────────────────────────────────────────────
@@ -1460,8 +1488,9 @@ with col_logo:
     </div>
     """, unsafe_allow_html=True)
 with col_user:
-    credits = get_firecrawl_credits(st.session_state['firecrawl_key'])
-    credit_display = f"⚡ {credits} credits" if credits is not None else "⚡ —"
+    firecrawl_key = st.session_state.get("firecrawl_key", "")
+    credits = get_firecrawl_credits(firecrawl_key)
+    credit_display = f"Firecrawl: {credits} credits" if credits is not None else ("Firecrawl: checking..." if firecrawl_key else "Firecrawl: no key")
     st.markdown(f"""
     <div style='text-align:right;padding-top:4px;'>
         <div style='font-size:12px;color:#6b7280;font-family:"Inter",sans-serif;'>Manoj | MIDAS IT</div>
@@ -2159,7 +2188,6 @@ with main:
 
             if st.button("✉ Generate Email Draft", key="gen_email_btn"):
                 st.session_state["generated_email"] = generate_email(company_data, sales_data)
-                st.rerun()
 
             if st.session_state["generated_email"]:
                 lines = st.session_state["generated_email"].strip().split("\n")

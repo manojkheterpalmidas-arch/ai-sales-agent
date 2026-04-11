@@ -1385,6 +1385,153 @@ def extract_domain(url):
     from urllib.parse import urlparse
     return urlparse(url).netloc.replace("www.", "")
 
+
+def _excel_cell_ref(row, col):
+    letters = ""
+    while col:
+        col, rem = divmod(col - 1, 26)
+        letters = chr(65 + rem) + letters
+    return f"{letters}{row}"
+
+
+def _excel_text(value):
+    import html
+    if value is None:
+        return ""
+    if isinstance(value, (list, tuple, set)):
+        value = "; ".join(str(v) for v in value)
+    elif isinstance(value, dict):
+        value = json.dumps(value, ensure_ascii=False)
+    return html.escape(str(value), quote=False)
+
+
+def build_companies_excel(history_rows):
+    import io
+    import zipfile
+
+    headers = [
+        "Company", "Domain", "Score", "Date", "Pages Crawled", "Employee Count",
+        "Locations", "Founded", "Confidence", "Confidence Reason", "Overview",
+        "Engineering Capabilities", "Project Types", "Software Mentioned",
+        "People", "Open Roles", "Projects", "FEM Opportunities", "Pain Points",
+        "Entry Point", "Value Positioning", "Likely Objections", "Hiring Signals",
+        "Expansion Signals", "Pre-Meeting Mentions", "Smart Questions",
+        "Opening Line", "Recommended Products", "Product Reason", "Score Reason"
+    ]
+
+    rows = [headers]
+    for item in history_rows:
+        cd = item.get("company_data") or {}
+        sd = item.get("sales_data") or {}
+
+        people = "; ".join(
+            f"{p.get('name', '')} ({p.get('role', '')})".strip()
+            for p in cd.get("people", [])
+        )
+        open_roles = "; ".join(
+            f"{r.get('title', '')} - {', '.join(r.get('skills', []))}".strip(" -")
+            for r in cd.get("open_roles", [])
+        )
+        projects = "; ".join(
+            f"{p.get('name', '')} ({p.get('type', '')}) - {p.get('description', '')}".strip(" -")
+            for p in cd.get("projects", [])
+        )
+
+        rows.append([
+            item.get("company", ""),
+            item.get("domain", ""),
+            item.get("score", ""),
+            item.get("date", ""),
+            item.get("pages_count", ""),
+            cd.get("employee_count", ""),
+            cd.get("locations", []),
+            cd.get("founded", ""),
+            cd.get("confidence", ""),
+            cd.get("confidence_reason", ""),
+            cd.get("overview", []),
+            cd.get("engineering_capabilities", []),
+            cd.get("project_types", []),
+            cd.get("software_mentioned", []),
+            people,
+            open_roles,
+            projects,
+            sd.get("fem_opportunities", []),
+            sd.get("pain_points", []),
+            sd.get("entry_point", ""),
+            sd.get("value_positioning", ""),
+            sd.get("likely_objections", []),
+            sd.get("hiring_signals", []),
+            sd.get("expansion_signals", []),
+            sd.get("pre_meeting_mention", []),
+            sd.get("smart_questions", []),
+            sd.get("opening_line", ""),
+            sd.get("recommended_products", []),
+            sd.get("product_reason", ""),
+            sd.get("score_reason", ""),
+        ])
+
+    sheet_rows = []
+    for r_idx, row in enumerate(rows, 1):
+        cells = []
+        for c_idx, value in enumerate(row, 1):
+            ref = _excel_cell_ref(r_idx, c_idx)
+            style = ' s="1"' if r_idx == 1 else ""
+            cells.append(f'<c r="{ref}" t="inlineStr"{style}><is><t>{_excel_text(value)}</t></is></c>')
+        sheet_rows.append(f'<row r="{r_idx}">' + "".join(cells) + "</row>")
+
+    max_col = len(headers)
+    col_defs = "".join(f'<col min="{i}" max="{i}" width="{22 if i < 15 else 38}" customWidth="1"/>' for i in range(1, max_col + 1))
+    sheet_xml = f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <cols>{col_defs}</cols>
+  <sheetData>{''.join(sheet_rows)}</sheetData>
+</worksheet>'''
+
+    workbook_xml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+          xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets><sheet name="Companies" sheetId="1" r:id="rId1"/></sheets>
+</workbook>'''
+
+    rels_xml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>'''
+
+    workbook_rels_xml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>'''
+
+    styles_xml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>
+  <fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>
+  <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+  <cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0"/></cellXfs>
+</styleSheet>'''
+
+    content_types_xml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+</Types>'''
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml", content_types_xml)
+        z.writestr("_rels/.rels", rels_xml)
+        z.writestr("xl/workbook.xml", workbook_xml)
+        z.writestr("xl/_rels/workbook.xml.rels", workbook_rels_xml)
+        z.writestr("xl/worksheets/sheet1.xml", sheet_xml)
+        z.writestr("xl/styles.xml", styles_xml)
+    buffer.seek(0)
+    return buffer.read()
 def export_pdf(company, cd, sd):
     import io
     from reportlab.lib.pagesizes import A4
@@ -2298,17 +2445,23 @@ with main:
                 st.markdown("<div style='font-family:Inter,sans-serif;font-size:11px;color:#6b7280;margin-bottom:4px;letter-spacing:0.1em;'>EMAIL BODY — edit below before copying</div>", unsafe_allow_html=True)
                 edited_email = st.text_area("", value=body, height=320, label_visibility="collapsed")
                 full_copy = f"Subject: {subject}\n\n{edited_email}" if subject else edited_email
-                st.download_button("📋 Download as .txt", data=full_copy, file_name=f"MIDAS_Email_{company_name.replace(' ','_')}.txt", mime="text/plain")
+                st.download_button("đź“Ą  Download PDF", data=pdf_bytes, file_name=fname, mime="application/pdf")
 
-        # TAB 8 ── EXPORT & NOTES
-        with t8:
-            ea, eb = st.columns([1, 1])
-            with ea:
-                st.markdown('<div class="sec-label">PDF Export</div>', unsafe_allow_html=True)
-                st.markdown("<div style='background:white;border:1px solid #f3f4f6;border-radius:8px;padding:20px 24px;margin-bottom:16px;'><div style='font-weight:600;font-size:15px;color:#1a1a1a;margin-bottom:6px;'>PDF Sales Dossier</div><div style='font-size:13px;color:#6b7280;'>Ready to print or share before a meeting.</div></div>", unsafe_allow_html=True)
-                pdf_bytes = export_pdf(company_name, company_data, sales_data)
-                fname = f"MIDAS_Intel_{company_name.replace(' ','_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
-                st.download_button("📥  Download PDF", data=pdf_bytes, file_name=fname, mime="application/pdf")
+                st.markdown('<div class="sec-label" style="margin-top:24px;">All Companies Excel Export</div>', unsafe_allow_html=True)
+                all_history = load_history()
+                if all_history:
+                    excel_bytes = build_companies_excel(all_history)
+                    excel_name = f"MIDAS_All_Companies_{datetime.now().strftime('%Y%m%d')}.xlsx"
+                    st.download_button(
+                        "đź“Š  Download All Companies Excel",
+                        data=excel_bytes,
+                        file_name=excel_name,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )
+                    st.caption(f"Includes {len(all_history)} saved companies from Supabase history.")
+                else:
+                    st.info("No saved companies available to export yet.")
 
             with eb:
                 st.markdown('<div class="sec-label">Rep Notes</div>', unsafe_allow_html=True)

@@ -1665,6 +1665,73 @@ with sidebar:
                     if st.button("🗑", key=f"del_{i}", help=f"Delete {name}"):
                         st.session_state["confirm_delete"] = h.get("domain", "")
 
+        # ── DOWNLOAD ALL AS CSV ──────────────────────────────────────────
+        st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+        st.markdown('<div class="sec-label">Bulk Export</div>', unsafe_allow_html=True)
+
+        import csv, io as _io
+        all_history = load_history()
+        if all_history:
+            csv_buffer = _io.StringIO()
+            writer = csv.writer(csv_buffer)
+            writer.writerow([
+                "Company", "Domain", "Score", "Score Reason", "Date Analysed",
+                "Pages Crawled", "Locations", "Employee Count", "Founded",
+                "Confidence", "Confidence Reason",
+                "Engineering Capabilities", "Project Types", "Software Mentioned",
+                "FEM Opportunities", "Pain Points",
+                "Entry Point", "Value Positioning",
+                "Likely Objections", "Hiring Signals", "Expansion Signals",
+                "Recommended Products", "Product Reason",
+                "Opening Line", "Pre-Meeting Mentions", "Smart Questions",
+                "People Count", "Projects Count", "Open Roles Count"
+            ])
+            for h in all_history:
+                cd = h.get("company_data", {}) or {}
+                sd = h.get("sales_data", {}) or {}
+                writer.writerow([
+                    h.get("company", ""),
+                    h.get("domain", ""),
+                    h.get("score", ""),
+                    sd.get("score_reason", ""),
+                    h.get("date", ""),
+                    h.get("pages_count", ""),
+                    " | ".join(cd.get("locations", [])),
+                    cd.get("employee_count", ""),
+                    cd.get("founded", ""),
+                    cd.get("confidence", ""),
+                    cd.get("confidence_reason", ""),
+                    " | ".join(cd.get("engineering_capabilities", [])),
+                    " | ".join(cd.get("project_types", [])),
+                    " | ".join(cd.get("software_mentioned", [])),
+                    " | ".join(sd.get("fem_opportunities", [])),
+                    " | ".join(sd.get("pain_points", [])),
+                    sd.get("entry_point", ""),
+                    sd.get("value_positioning", ""),
+                    " | ".join(sd.get("likely_objections", [])),
+                    " | ".join(sd.get("hiring_signals", [])),
+                    " | ".join(sd.get("expansion_signals", [])),
+                    " | ".join(sd.get("recommended_products", [])),
+                    sd.get("product_reason", ""),
+                    sd.get("opening_line", ""),
+                    " | ".join(sd.get("pre_meeting_mention", [])),
+                    " | ".join(sd.get("smart_questions", [])),
+                    len(cd.get("people", [])),
+                    len(cd.get("projects", [])),
+                    len(cd.get("open_roles", []))
+                ])
+            csv_data = csv_buffer.getvalue()
+            st.download_button(
+                "📥 Download All as CSV",
+                data=csv_data,
+                file_name=f"MIDAS_Intel_All_Companies_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+            st.caption(f"{len(all_history)} companies in export")
+        else:
+            st.markdown("<div style='font-size:11px;color:#9ca3af;'>No data to export yet</div>", unsafe_allow_html=True)
+
 if st.session_state.get("confirm_delete"):
     domain_to_delete = st.session_state["confirm_delete"]
     match = next((h for h in history if h.get("domain") == domain_to_delete), None)

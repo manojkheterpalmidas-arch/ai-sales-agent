@@ -2072,34 +2072,66 @@ with main:
                 batch_status.empty()
                 overall_prog.empty()
                 
-                # ── BATCH SUMMARY ────────────────────────────────────────────
-                st.markdown(f"""
-                <div style='background:white;border:1px solid #f3f4f6;border-left:3px solid #1a1a1a;border-radius:8px;padding:20px 24px;margin:20px 0;'>
-                    <div style='font-weight:700;font-size:16px;color:#1a1a1a;margin-bottom:10px;'>Batch Complete</div>
-                    <div style='display:flex;gap:24px;flex-wrap:wrap;'>
-                        <div><span style='font-size:24px;font-weight:700;color:#16a34a;'>{succeeded}</span><br><span style='font-size:11px;color:#6b7280;'>Analysed</span></div>
-                        <div><span style='font-size:24px;font-weight:700;color:#9ca3af;'>{skipped}</span><br><span style='font-size:11px;color:#6b7280;'>Skipped</span></div>
-                        <div><span style='font-size:24px;font-weight:700;color:#dc2626;'>{failed}</span><br><span style='font-size:11px;color:#6b7280;'>Failed</span></div>
-                    </div>
+                # Save batch results to session state so they survive the rerun
+                st.session_state["batch_results"] = batch_results
+                st.session_state["batch_succeeded"] = succeeded
+                st.session_state["batch_skipped"] = skipped
+                st.session_state["batch_failed"] = failed
+                st.rerun()
+        
+        # ── SHOW BATCH SUMMARY (persisted after rerun) ───────────────────
+        if st.session_state.get("batch_results"):
+            batch_results = st.session_state["batch_results"]
+            succeeded = st.session_state.get("batch_succeeded", 0)
+            skipped = st.session_state.get("batch_skipped", 0)
+            failed = st.session_state.get("batch_failed", 0)
+            
+            st.markdown(f"""
+            <div style='background:white;border:1px solid #f3f4f6;border-left:3px solid #1a1a1a;border-radius:8px;padding:20px 24px;margin:20px 0;'>
+                <div style='font-weight:700;font-size:16px;color:#1a1a1a;margin-bottom:10px;'>Batch Complete</div>
+                <div style='display:flex;gap:24px;flex-wrap:wrap;'>
+                    <div><span style='font-size:24px;font-weight:700;color:#16a34a;'>{succeeded}</span><br><span style='font-size:11px;color:#6b7280;'>Analysed</span></div>
+                    <div><span style='font-size:24px;font-weight:700;color:#9ca3af;'>{skipped}</span><br><span style='font-size:11px;color:#6b7280;'>Skipped</span></div>
+                    <div><span style='font-size:24px;font-weight:700;color:#dc2626;'>{failed}</span><br><span style='font-size:11px;color:#6b7280;'>Failed</span></div>
                 </div>
-                """, unsafe_allow_html=True)
-                
-                # Batch CSV download
-                if batch_results:
-                    import csv, io as _bio
-                    batch_csv = _bio.StringIO()
-                    bw = csv.writer(batch_csv)
-                    bw.writerow(["Company", "Domain", "Status", "Score", "Error"])
-                    for r in batch_results:
-                        bw.writerow([r["company"], r["domain"], r["status"], r["score"], r["reason"]])
-                    st.download_button(
-                        "📥 Download Batch Summary CSV",
-                        data=batch_csv.getvalue(),
-                        file_name=f"MIDAS_Batch_Summary_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                        mime="text/csv"
-                    )
-                
-                st.info("💡 All successfully analysed companies are saved to history. Use the sidebar to view individual reports, or use **Download All as CSV** for the full export.")
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Per-company results list
+            for r in batch_results:
+                if r["status"] == "✅ Done":
+                    st.markdown(f"<div style='font-size:12px;color:#16a34a;padding:4px 0;'>✅ <b>{r['company']}</b> — {score_emoji(r['score'])} {r['score']}</div>", unsafe_allow_html=True)
+                elif r["status"] == "⏭ Skipped":
+                    st.markdown(f"<div style='font-size:12px;color:#9ca3af;padding:4px 0;'>⏭ <b>{r['company']}</b> — already in history</div>", unsafe_allow_html=True)
+                else:
+                    st.markdown(f"<div style='font-size:12px;color:#dc2626;padding:4px 0;'>❌ <b>{r['domain']}</b> — {r['reason']}</div>", unsafe_allow_html=True)
+            
+            # Batch CSV download
+            import csv, io as _bio
+            batch_csv = _bio.StringIO()
+            bw = csv.writer(batch_csv)
+            bw.writerow(["Company", "Domain", "Status", "Score", "Error"])
+            for r in batch_results:
+                bw.writerow([r["company"], r["domain"], r["status"], r["score"], r["reason"]])
+            
+            bc_dl1, bc_dl2 = st.columns([1, 1])
+            with bc_dl1:
+                st.download_button(
+                    "📥 Download Batch Summary CSV",
+                    data=batch_csv.getvalue(),
+                    file_name=f"MIDAS_Batch_Summary_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
+            with bc_dl2:
+                if st.button("✕ Clear Batch Results", use_container_width=True):
+                    del st.session_state["batch_results"]
+                    del st.session_state["batch_succeeded"]
+                    del st.session_state["batch_skipped"]
+                    del st.session_state["batch_failed"]
+                    st.rerun()
+            
+            st.info("💡 All analysed companies are now in the sidebar. Use **Download All as CSV** for the full export including these.")
 
     st.divider()
 

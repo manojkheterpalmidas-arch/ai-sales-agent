@@ -1755,50 +1755,351 @@ if st.session_state.get("confirm_delete"):
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
     st.markdown("<div style='font-family:Inter,sans-serif;font-size:9px;color:#ccc;'>Powered by Supabase</div>", unsafe_allow_html=True)
 
+# ── BATCH ANALYSIS FUNCTION ──────────────────────────────────────────────────
+def analyse_single_url(website_url, progress_callback=None, status_callback=None):
+    """Run the full analysis pipeline for one URL. Returns (entry_dict, error_str)."""
+    import time as _time
+    try:
+        if not website_url.startswith("http"):
+            website_url = "https://" + website_url
+        
+        _domain = extract_domain(website_url)
+        
+        if status_callback:
+            status_callback(f"🔍 Crawling {_domain}...")
+        
+        # Crawl
+        pages = firecrawl_crawl(website_url)
+        
+        # Smart fallback for thin crawls
+        def _is_thin(pl):
+            if not pl: return True
+            if all(len(p.get("markdown","")) < 500 for p in pl): return True
+            if len([p for p in pl if len(p.get("markdown","")) > 500]) < 3: return True
+            return False
+        
+        if _is_thin(pages):
+            if status_callback:
+                status_callback(f"🌐 Trying ScrapingBee for {_domain}...")
+            sb_pages = scrape_with_scrapingbee(website_url)
+            if sb_pages and any(len(p.get("markdown","")) > 500 for p in sb_pages):
+                pages = sb_pages
+            elif _is_thin(pages):
+                if status_callback:
+                    status_callback(f"🔄 Trying direct fetch for {_domain}...")
+                direct_pages = direct_fetch(website_url)
+                if direct_pages and any(len(p.get("markdown","")) > 500 for p in direct_pages):
+                    pages = direct_pages
+                elif _is_thin(pages):
+                    if status_callback:
+                        status_callback(f"🔄 Trying SerpAPI for {_domain}...")
+                    serp_pages = fetch_serpapi_site_results(website_url)
+                    if serp_pages:
+                        pages = serp_pages
+        
+        if not pages:
+            return None, f"Could not extract content from {_domain}"
+        
+        if progress_callback: progress_callback(30)
+        
+        # Build corpus + analyse
+        corpus = build_corpus(pages)
+        if status_callback:
+            status_callback(f"🧠 Analysing {_domain}...")
+        company_raw = analyze_company(corpus)
+        _company_data = safe_json(company_raw)
+        
+        if progress_callback: progress_callback(60)
+        
+        # Additional source lookups
+        _company_name = _company_data.get("company_name", "")
+        _extra_corpus = ""
+        
+        if status_callback:
+            status_callback(f"📊 Enriching {_domain}...")
+        
+        lookup_jobs = {
+            "company_registry": (lookup_companies_house, (_company_name,), {"locations": _company_data.get("locations", [])}),
+            "linkedin": (lookup_linkedin_company, (_company_name,), {}),
+            "reviews": (lookup_glassdoor, (_company_name, _domain), {}),
+            "planning": (lookup_planning_portal, (_company_name,), {}),
+        }
+        _lookup_results = {}
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            future_map = {
+                executor.submit(func, *args, **kwargs): name
+                for name, (func, args, kwargs) in lookup_jobs.items()
+            }
+            for future in as_completed(future_map):
+                name = future_map[future]
+                try:
+                    _lookup_results[name] = future.result()
+                except:
+                    _lookup_results[name] = ("", 0)
+        
+        ch_text, ch_dirs = _lookup_results.get("company_registry", ("", 0))
+        if ch_text:
+            _extra_corpus += f"\n\n[SOURCE: Company Registry]\n{ch_text}"
+        
+        li_text, li_emp = _lookup_results.get("linkedin", ("", ""))
+        if li_text:
+            _extra_corpus += f"\n\n[SOURCE: LinkedIn]\n{li_text}"
+            if li_emp and not _company_data.get("employee_count"):
+                _company_data["employee_count"] = li_emp
+        
+        gd_text, gd_rev = _lookup_results.get("reviews", ("", 0))
+        gd_emp = extract_employee_count_from_text(gd_text)
+        if gd_text:
+            _extra_corpus += f"\n\n[SOURCE: Glassdoor & Indeed Reviews]\n{gd_text}"
+        if gd_emp and not _company_data.get("employee_count"):
+            _company_data["employee_count"] = gd_emp
+        
+        pp_text, pp_proj = _lookup_results.get("planning", ("", 0))
+        if pp_text:
+            _extra_corpus += f"\n\n[SOURCE: Planning Portal]\n{pp_text}"
+        
+        # People fallback
+        if len(_company_data.get("people", [])) == 0:
+            people_text = search_people_via_serpapi(_company_name, _domain)
+            if people_text:
+                _extra_corpus += f"\n\n[SOURCE: People Search]\n{people_text}"
+        
+        # Re-analyse with enriched corpus
+        if _extra_corpus:
+            enriched = corpus + _extra_corpus[:20000]
+            company_raw2 = analyze_company(enriched)
+            _company_data2 = safe_json(company_raw2)
+            for key in ["people", "projects", "locations", "employee_count", "founded"]:
+                if _company_data2.get(key) and len(str(_company_data2.get(key))) > len(str(_company_data.get(key, ""))):
+                    _company_data[key] = _company_data2[key]
+        
+        if not _company_data.get("employee_count"):
+            fb_emp = extract_employee_count_from_text(_extra_corpus)
+            if fb_emp:
+                _company_data["employee_count"] = fb_emp
+        
+        if progress_callback: progress_callback(80)
+        
+        # Sales strategy
+        if status_callback:
+            status_callback(f"💡 Strategy for {_domain}...")
+        sales_raw = analyze_sales(corpus + _extra_corpus[:5000], company_raw)
+        _sales_data = safe_json(sales_raw)
+        
+        if progress_callback: progress_callback(100)
+        
+        _entry = {
+            "domain":       _domain,
+            "company":      _company_data.get("company_name", website_url),
+            "score":        _sales_data.get("overall_score", "Cold"),
+            "date":         now_gmt2().strftime("%d %b %Y %H:%M"),
+            "pages_count":  len(pages),
+            "company_data": _company_data,
+            "sales_data":   _sales_data,
+        }
+        save_history(_entry)
+        return _entry, None
+    
+    except Exception as e:
+        return None, f"Error processing {website_url}: {str(e)}"
+
+
 # ── MAIN ──────────────────────────────────────────────────────────────────────
 with main:
+    # ── MODE TOGGLE ──────────────────────────────────────────────────────────
+    mode_col1, mode_col2 = st.columns([4, 2])
+    with mode_col2:
+        input_mode = st.radio("", ["Single", "Batch"], horizontal=True, label_visibility="collapsed", key="input_mode")
+    
     run = False
-    c1, c2 = st.columns([5, 1])
-    with c1:
-        default_url = ""
-        if "loaded_report" in st.session_state and not run:
-            default_url = st.session_state["loaded_report"].get("domain", "")
-            if default_url:
-                default_url = "https://" + default_url
+    batch_run = False
 
-        website = st.text_input("", value=default_url, placeholder="https://target-engineering-company.com", label_visibility="collapsed")
-    with c2:
-        run = st.button("Analyse →", use_container_width=True)
+    if input_mode == "Single":
+        c1, c2 = st.columns([5, 1])
+        with c1:
+            default_url = ""
+            if "loaded_report" in st.session_state:
+                default_url = st.session_state["loaded_report"].get("domain", "")
+                if default_url:
+                    default_url = "https://" + default_url
 
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            website = st.text_input("", value=default_url, placeholder="https://target-engineering-company.com", label_visibility="collapsed")
+        with c2:
+            run = st.button("Analyse →", use_container_width=True)
 
-    # ── ALREADY RESEARCHED WARNING ─────────────────────────────────────────────
-    if website and not run:
-        domain = extract_domain(website if website.startswith("http") else "https://" + website)
-        existing = find_in_history(domain)
-        if existing:
-            sc   = existing.get("score", "Cold")
-            date = days_ago(existing.get("date", ""))
-            st.markdown(f"""
-            <div style='background:#fffbeb;border:1px solid #fde68a;border-left:3px solid #1a1a1a;
-                 border-radius:8px;padding:14px 18px;margin-bottom:12px;'>
-                <div style='font-family:Inter,sans-serif;font-weight:700;font-size:13px;color:#1a1a1a;margin-bottom:4px;'>
-                    ⚠ Already Researched
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+        # ── ALREADY RESEARCHED WARNING ─────────────────────────────────────────
+        if website and not run:
+            domain = extract_domain(website if website.startswith("http") else "https://" + website)
+            existing = find_in_history(domain)
+            if existing:
+                sc   = existing.get("score", "Cold")
+                date = days_ago(existing.get("date", ""))
+                st.markdown(f"""
+                <div style='background:#fffbeb;border:1px solid #fde68a;border-left:3px solid #1a1a1a;
+                     border-radius:8px;padding:14px 18px;margin-bottom:12px;'>
+                    <div style='font-family:Inter,sans-serif;font-weight:700;font-size:13px;color:#1a1a1a;margin-bottom:4px;'>
+                        ⚠ Already Researched
+                    </div>
+                    <div style='font-size:13px;color:#4b5563;'>
+                        <b>{existing.get('company', domain)}</b> was last analysed <b>{date}</b> — scored as <b>{score_emoji(sc)} {sc}</b>.
+                    </div>
                 </div>
-                <div style='font-size:13px;color:#4b5563;'>
-                    <b>{existing.get('company', domain)}</b> was last analysed <b>{date}</b> — scored as <b>{score_emoji(sc)} {sc}</b>.
-                </div>
+                """, unsafe_allow_html=True)
+                wb1, wb2 = st.columns([1, 1])
+                with wb1:
+                    if st.button("📂 View Saved Report", use_container_width=True):
+                        st.session_state["loaded_report"] = existing
+                        st.session_state["active_domain"] = domain
+                        st.rerun()
+                with wb2:
+                    if st.button("🔄 Re-crawl Fresh", use_container_width=True):
+                        run = True
+
+    else:
+        # ── BATCH MODE ───────────────────────────────────────────────────────
+        st.markdown("""
+        <div style='background:white;border:1px solid #f3f4f6;border-radius:8px;padding:16px 20px;margin-bottom:12px;'>
+            <div style='font-weight:600;font-size:14px;color:#1a1a1a;margin-bottom:6px;'>📋 Batch Analysis</div>
+            <div style='font-size:13px;color:#6b7280;line-height:1.8;'>
+                Paste one URL per line. Each company will be crawled, analysed and saved automatically.<br>
+                Already-researched companies will be skipped unless you tick <b>Re-crawl all</b>.
             </div>
-            """, unsafe_allow_html=True)
-            wb1, wb2 = st.columns([1, 1])
-            with wb1:
-                if st.button("📂 View Saved Report", use_container_width=True):
-                    st.session_state["loaded_report"] = existing
-                    st.session_state["active_domain"] = domain
-                    st.rerun()
-            with wb2:
-                if st.button("🔄 Re-crawl Fresh", use_container_width=True):
-                    run = True
+        </div>
+        """, unsafe_allow_html=True)
+        
+        batch_urls = st.text_area(
+            "",
+            height=200,
+            placeholder="https://company-one.com\nhttps://company-two.com\nhttps://company-three.com\n...",
+            label_visibility="collapsed",
+            key="batch_urls_input"
+        )
+        
+        bc1, bc2, bc3 = st.columns([1, 1, 3])
+        with bc1:
+            batch_run = st.button("🚀 Run Batch", use_container_width=True)
+        with bc2:
+            batch_recrawl = st.checkbox("Re-crawl all", value=False, key="batch_recrawl")
+        
+        # ── BATCH EXECUTION ──────────────────────────────────────────────────
+        if batch_run and batch_urls.strip():
+            raw_lines = [l.strip() for l in batch_urls.strip().split("\n") if l.strip()]
+            # Deduplicate
+            seen_domains = set()
+            urls_to_process = []
+            for line in raw_lines:
+                url = line if line.startswith("http") else "https://" + line
+                d = extract_domain(url)
+                if d and d not in seen_domains:
+                    seen_domains.add(d)
+                    urls_to_process.append(url)
+            
+            total = len(urls_to_process)
+            if total == 0:
+                st.warning("No valid URLs found.")
+            else:
+                st.markdown(f"""
+                <div style='background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 18px;margin-bottom:16px;'>
+                    <div style='font-weight:600;font-size:14px;color:#166534;'>Starting batch: {total} companies</div>
+                    <div style='font-size:12px;color:#4ade80;margin-top:2px;'>Each takes ~60-120 seconds depending on site complexity</div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                overall_prog = st.progress(0)
+                batch_status = st.empty()
+                results_container = st.container()
+                
+                completed = 0
+                skipped = 0
+                failed = 0
+                succeeded = 0
+                batch_results = []
+                
+                for idx, url in enumerate(urls_to_process):
+                    d = extract_domain(url)
+                    
+                    # Check if already exists
+                    if not batch_recrawl:
+                        existing = find_in_history(d)
+                        if existing:
+                            skipped += 1
+                            completed += 1
+                            overall_prog.progress(completed / total)
+                            batch_results.append({"domain": d, "company": existing.get("company", d), "status": "⏭ Skipped", "score": existing.get("score", "—"), "reason": "Already in history"})
+                            with results_container:
+                                st.markdown(f"<div style='font-size:12px;color:#9ca3af;padding:4px 0;'>⏭ <b>{existing.get('company', d)}</b> — already researched, skipped</div>", unsafe_allow_html=True)
+                            continue
+                    
+                    batch_status.markdown(f"""
+                    <div style='background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 16px;'>
+                        <div style='font-weight:600;font-size:13px;color:#1e40af;'>Processing {idx+1} of {total}: {d}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    def _prog_cb(pct):
+                        # Map per-company progress into overall progress
+                        base = completed / total
+                        chunk = (1 / total) * (pct / 100)
+                        overall_prog.progress(min(base + chunk, 1.0))
+                    
+                    def _stat_cb(msg):
+                        batch_status.markdown(f"""
+                        <div style='background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 16px;'>
+                            <div style='font-weight:600;font-size:13px;color:#1e40af;'>Processing {idx+1} of {total}: {d}</div>
+                            <div style='font-size:11px;color:#3b82f6;margin-top:2px;'>{msg}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    entry, error = analyse_single_url(url, progress_callback=_prog_cb, status_callback=_stat_cb)
+                    
+                    completed += 1
+                    overall_prog.progress(completed / total)
+                    
+                    if entry:
+                        succeeded += 1
+                        sc = entry.get("score", "Cold")
+                        batch_results.append({"domain": d, "company": entry.get("company", d), "status": "✅ Done", "score": sc, "reason": ""})
+                        with results_container:
+                            st.markdown(f"<div style='font-size:12px;color:#16a34a;padding:4px 0;'>✅ <b>{entry.get('company', d)}</b> — {score_emoji(sc)} {sc}</div>", unsafe_allow_html=True)
+                    else:
+                        failed += 1
+                        batch_results.append({"domain": d, "company": d, "status": "❌ Failed", "score": "—", "reason": error or "Unknown error"})
+                        with results_container:
+                            st.markdown(f"<div style='font-size:12px;color:#dc2626;padding:4px 0;'>❌ <b>{d}</b> — {error}</div>", unsafe_allow_html=True)
+                
+                batch_status.empty()
+                overall_prog.empty()
+                
+                # ── BATCH SUMMARY ────────────────────────────────────────────
+                st.markdown(f"""
+                <div style='background:white;border:1px solid #f3f4f6;border-left:3px solid #1a1a1a;border-radius:8px;padding:20px 24px;margin:20px 0;'>
+                    <div style='font-weight:700;font-size:16px;color:#1a1a1a;margin-bottom:10px;'>Batch Complete</div>
+                    <div style='display:flex;gap:24px;flex-wrap:wrap;'>
+                        <div><span style='font-size:24px;font-weight:700;color:#16a34a;'>{succeeded}</span><br><span style='font-size:11px;color:#6b7280;'>Analysed</span></div>
+                        <div><span style='font-size:24px;font-weight:700;color:#9ca3af;'>{skipped}</span><br><span style='font-size:11px;color:#6b7280;'>Skipped</span></div>
+                        <div><span style='font-size:24px;font-weight:700;color:#dc2626;'>{failed}</span><br><span style='font-size:11px;color:#6b7280;'>Failed</span></div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Batch CSV download
+                if batch_results:
+                    import csv, io as _bio
+                    batch_csv = _bio.StringIO()
+                    bw = csv.writer(batch_csv)
+                    bw.writerow(["Company", "Domain", "Status", "Score", "Error"])
+                    for r in batch_results:
+                        bw.writerow([r["company"], r["domain"], r["status"], r["score"], r["reason"]])
+                    st.download_button(
+                        "📥 Download Batch Summary CSV",
+                        data=batch_csv.getvalue(),
+                        file_name=f"MIDAS_Batch_Summary_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                        mime="text/csv"
+                    )
+                
+                st.info("💡 All successfully analysed companies are saved to history. Use the sidebar to view individual reports, or use **Download All as CSV** for the full export.")
 
     st.divider()
 

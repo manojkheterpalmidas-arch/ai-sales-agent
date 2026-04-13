@@ -1344,7 +1344,7 @@ Requirements:
 - Subject line first (prefix with "Subject: ")
 - 4-5 short paragraphs
 - Mention something specific about their work
-- One clear call to action (15-min call)
+- One clear call to action (30-45- online meeting)
 - Professional but conversational tone
 - No generic opener like "I hope this email finds you well"
 - Sign off as the MIDAS IT team

@@ -1,37 +1,86 @@
-import streamlit as st
-from openai import OpenAI
-import requests
-import json
+"""
+MIDAS Pre Sales Intelligence — FastAPI Backend
+Ported from Streamlit app. All crawling, AI analysis, enrichment, and storage logic.
+"""
+
+import os
+import io
 import re
-from supabase import create_client, Client
+import csv
+import json
+import time
+import asyncio
 from datetime import datetime, timezone, timedelta
+from typing import Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import urljoin, urlparse
+
+import requests
 from requests.adapters import HTTPAdapter
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+from openai import OpenAI
+from supabase import create_client, Client
+from bs4 import BeautifulSoup
+
+# ── CONFIG ───────────────────────────────────────────────────────────────────
+
+app = FastAPI(title="MIDAS Pre Sales Intel API", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Lock down in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Env vars (set via Railway/Render secrets or .env)
+SUPABASE_URL = os.environ["SUPABASE_URL"]
+SUPABASE_KEY = os.environ["SUPABASE_KEY"]
+DEEPSEEK_API_KEY = os.environ["DEEPSEEK_API_KEY"]
+FIRECRAWL_KEY = os.environ["FIRECRAWL_KEY"]
+SERPER_API_KEY = os.environ.get("SERPER_API_KEY", "")
+SCRAPINGBEE_KEY = os.environ.get("SCRAPINGBEE_KEY", "")
+COMPANIES_HOUSE_KEY = os.environ.get("COMPANIES_HOUSE_KEY", "")
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+deepseek = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+
+# Shared HTTP session
+http = requests.Session()
+adapter = HTTPAdapter(pool_connections=20, pool_maxsize=20)
+http.mount("http://", adapter)
+http.mount("https://", adapter)
+http.headers.update({"User-Agent": "Mozilla/5.0"})
+
+
 def now_gmt2():
     return datetime.now(timezone.utc) + timedelta(hours=2)
 
 
-# ── SUPABASE CLIENT ───────────────────────────────────────────────────────────
-@st.cache_resource
-def get_supabase() -> Client:
-    return create_client(
-        st.secrets["SUPABASE_URL"],
-        st.secrets["SUPABASE_KEY"]
-    )
+# ── PYDANTIC MODELS ──────────────────────────────────────────────────────────
 
-supabase = get_supabase()
+class AnalyseRequest(BaseModel):
+    url: str
 
-@st.cache_resource
-def get_http_session():
-    session = requests.Session()
-    adapter = HTTPAdapter(pool_connections=20, pool_maxsize=20)
-    session.mount("http://", adapter)
-    session.mount("https://", adapter)
-    session.headers.update({"User-Agent": "Mozilla/5.0"})
-    return session
+class BatchRequest(BaseModel):
+    urls: list[str]
+    recrawl: bool = False
 
-http = get_http_session()
-# ── STORAGE FUNCTIONS ─────────────────────────────────────────────────────────
+class NoteUpdate(BaseModel):
+    domain: str
+    note: str
+
+class EmailRequest(BaseModel):
+    company_data: dict
+    sales_data: dict
+
+
+# ── STORAGE ──────────────────────────────────────────────────────────────────
+
 def load_history():
     try:
         res = supabase.table("midas_history").select("*").order("date", desc=True).execute()
@@ -51,7 +100,7 @@ def save_history(entry):
             "sales_data":   entry["sales_data"],
         }, on_conflict="domain").execute()
     except Exception as e:
-        st.warning(f"Could not save history: {e}")
+        print(f"Could not save history: {e}")
 
 def find_in_history(domain):
     try:
@@ -60,22 +109,11 @@ def find_in_history(domain):
     except:
         return None
 
-def load_notes():
+def delete_from_history(domain):
     try:
-        res = supabase.table("midas_notes").select("*").execute()
-        return {r["domain"]: {"text": r["note_text"], "updated": r["updated"]} for r in res.data}
-    except:
-        return {}
-
-def save_note(domain, note):
-    try:
-        supabase.table("midas_notes").upsert({
-            "domain":    domain,
-            "note_text": note,
-            "updated":   now_gmt2().strftime("%d %b %Y %H:%M")
-        }, on_conflict="domain").execute()
+        supabase.table("midas_history").delete().eq("domain", domain).execute()
     except Exception as e:
-        st.warning(f"Could not save note: {e}")
+        print(f"Could not delete: {e}")
 
 def get_note(domain):
     try:
@@ -87,14 +125,28 @@ def get_note(domain):
         pass
     return {}
 
+def save_note_db(domain, note):
+    try:
+        supabase.table("midas_notes").upsert({
+            "domain":    domain,
+            "note_text": note,
+            "updated":   now_gmt2().strftime("%d %b %Y %H:%M")
+        }, on_conflict="domain").execute()
+    except Exception as e:
+        print(f"Could not save note: {e}")
+
+
+# ── HELPERS ──────────────────────────────────────────────────────────────────
+
+def extract_domain(url):
+    return urlparse(url).netloc.replace("www.", "")
+
 def days_ago(date_str):
     try:
         dt = datetime.strptime(date_str, "%d %b %Y %H:%M")
         now = now_gmt2().replace(tzinfo=None)
         diff = (now - dt).days
-        if diff < 0:
-            return "today"
-        elif diff == 0:
+        if diff <= 0:
             return "today"
         elif diff == 1:
             return "yesterday"
@@ -103,311 +155,42 @@ def days_ago(date_str):
     except:
         return "recently"
 
-def delete_from_history(domain):
+def safe_json(text):
     try:
-        supabase.table("midas_history").delete().eq("domain", domain).execute()
-    except Exception as e:
-        st.warning(f"Could not delete: {e}")
-# # ── AUTH ──────────────────────────────────────────────────────────────────────
-# if "authenticated" not in st.session_state:
-#     st.session_state.authenticated = False
+        cleaned = re.sub(r"```json|```", "", text).strip()
+        return json.loads(cleaned)
+    except:
+        try:
+            match = re.search(r'\{.*\}', text, re.DOTALL)
+            if match:
+                return json.loads(match.group())
+        except:
+            pass
+        return {}
 
-# PASSCODE = "5487"
+def extract_employee_count_from_text(text):
+    if not text:
+        return ""
+    normalized = re.sub(r"\s+", " ", text)
+    patterns = [
+        r"(\d[\d,]*(?:\+)?(?:\s*[-–]\s*\d[\d,]*(?:\+)?)?)\s+(?:employees|staff)",
+        r"(?:company size|employees)[:\s]+(\d[\d,]*(?:\+)?(?:\s*[-–]\s*\d[\d,]*(?:\+)?)?)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, normalized, re.IGNORECASE)
+        if match:
+            count = re.sub(r"\s*[-–]\s*", "-", match.group(1).strip())
+            return f"{count} employees"
+    return ""
 
-# if not st.session_state.authenticated:
-#     st.set_page_config(page_title="MIDAS Pre Sales Intel", page_icon="🔐", layout="centered")
-#     st.markdown("""
-#     <style>
-#     @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700&family=JetBrains+Mono:wght@400&display=swap');
-#     html, body, [class*="css"] { background: #ffffff !important; font-family: 'Syne', sans-serif; }
-#     .stApp { background: #ffffff !important; }
-#     .stTextInput > div > div > input {
-#         background: white !important; color: #111 !important;
-#         border: 1.5px solid #ddd !important; border-radius: 6px !important;
-#         font-family: 'JetBrains Mono', monospace !important;
-#         font-size: 22px !important; letter-spacing: 0.4em !important;
-#         text-align: center !important; padding: 14px !important;
-#         caret-color: #1a1a1a !important;
-#     }
-#     .stTextInput > div > div > input:focus { border-color: #1a1a1a !important; box-shadow: 0 0 0 3px rgba(37,99,235,0.1) !important; }
-#     .stButton > button {
-#         background: #111 !important; color: white !important;
-#         border: none !important; border-radius: 6px !important;
-#         font-family: 'Syne', sans-serif !important; font-weight: 700 !important;
-#         font-size: 13px !important; letter-spacing: 0.1em !important;
-#         text-transform: uppercase !important; padding: 11px 28px !important;
-#     }
-#     .stButton > button:hover { background: #1a1a1a !important; color: white !important; }
-#     div[data-testid="stButton"] > button > div > p,
-#     div[data-testid="stButton"] button p,
-#     div[data-testid="stButton"] button span,
-#     div[data-testid="stButton"] button * { color: white !important; font-family: 'Syne', sans-serif !important; font-weight: 700 !important; }
-#     </style>
-#     """, unsafe_allow_html=True)
 
-#     st.markdown("<div style='height:60px'></div>", unsafe_allow_html=True)
-#     c1, c2, c3 = st.columns([1, 2, 1])
-#     with c2:
-#         st.markdown("""
-#         <div style='text-align:center;margin-bottom:32px;'>
-#             <div style='font-family:Inter,sans-serif;font-size:11px;letter-spacing:0.3em;color:#1a1a1a;text-transform:uppercase;margin-bottom:6px;'>MIDAS IT</div>
-#             <div style='font-family:Inter,sans-serif;font-size:32px;font-weight:700;color:#1a1a1a;'>Sales Intelligence</div>
-#             <div style='width:32px;height:3px;background:#1a1a1a;margin:12px auto 0;'></div>
-#         </div>
-#         """, unsafe_allow_html=True)
-#         code = st.text_input("", type="password", placeholder="· · · ·", label_visibility="collapsed")
-#         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-#         if st.button("UNLOCK"):
-#             if code == PASSCODE:
-#                 st.session_state.authenticated = True
-#                 st.rerun()
-#             else:
-#                 st.error("Incorrect passcode")
-#     st.stop()
+# ── CRAWLING ─────────────────────────────────────────────────────────────────
 
-# ── PAGE CONFIG ───────────────────────────────────────────────────────────────
-st.set_page_config(page_title="MIDAS Pre Sales Intelligence", layout="wide", page_icon="🚀")
-
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-
-html, body, [class*="css"] { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important; background: #ffffff !important; color: #1a1a1a !important; }
-.stApp { background: #ffffff !important; }
-.stApp, .stApp * { color: #1a1a1a !important; }
-.stApp .stButton button,
-.stApp .stButton button *,
-.stApp div[data-testid="stButton"] button,
-.stApp div[data-testid="stButton"] button * { color: white !important; }
-.stMarkdown, .stMarkdown * { color: #1a1a1a !important; }
-.stTabs [data-baseweb="tab-panel"], .stTabs [data-baseweb="tab-panel"] * { color: #1a1a1a !important; }
-.streamlit-expanderContent, .streamlit-expanderContent * { color: #1a1a1a !important; }
-[data-testid="column"], [data-testid="column"] * { color: #1a1a1a !important; }
-[data-testid="stMetricValue"] { color: #1a1a1a !important; }
-[data-testid="stMetricLabel"] { color: #6b7280 !important; }
-.stAlert, .stAlert * { color: inherit !important; }
-.stCaptionContainer, .stCaptionContainer * { color: #6b7280 !important; }
-a { color: #2563eb !important; }
-a:hover { color: #1d4ed8 !important; }
-#MainMenu, footer { visibility: hidden; }
-.block-container { padding: 2rem 2.5rem 4rem !important; max-width: 1400px !important; }
-
-.stButton > button {
-    background: #1a1a1a !important; color: white !important; border: none !important;
-    border-radius: 8px !important; font-family: 'Inter', sans-serif !important;
-    font-weight: 600 !important; font-size: 13px !important; letter-spacing: 0.02em !important;
-    padding: 10px 24px !important; transition: all 0.15s ease !important;
-}
-.stButton > button:hover { background: #374151 !important; }
-
-.stDownloadButton > button {
-    background: transparent !important; color: #1a1a1a !important;
-    border: 1px solid #e5e7eb !important; border-radius: 8px !important;
-    font-family: 'Inter', sans-serif !important; font-weight: 600 !important;
-    font-size: 12px !important;
-}
-.stDownloadButton > button:hover { background: #f9fafb !important; border-color: #d1d5db !important; }
-
-.stTextInput > div > div > input {
-    background: #ffffff !important; color: #1a1a1a !important;
-    border: 1px solid #e5e7eb !important; border-radius: 8px !important;
-    font-family: 'Inter', sans-serif !important; font-size: 14px !important;
-    padding: 11px 14px !important;
-}
-.stTextInput > div > div > input:focus { border-color: #2563eb !important; box-shadow: 0 0 0 3px rgba(37,99,235,0.1) !important; }
-.stTextInput > div > div > input::placeholder { color: #9ca3af !important; }
-
-.stTextArea > div > div > textarea {
-    background: #ffffff !important; color: #1a1a1a !important;
-    border: 1px solid #e5e7eb !important; border-radius: 8px !important;
-    font-family: 'Inter', sans-serif !important; font-size: 14px !important;
-    padding: 11px 14px !important;
-}
-.stTextArea > div > div > textarea:focus { border-color: #2563eb !important; box-shadow: 0 0 0 3px rgba(37,99,235,0.1) !important; }
-
-[data-testid="metric-container"] {
-    background: #ffffff !important; border: 1px solid #f3f4f6 !important;
-    border-radius: 10px !important; padding: 16px 20px !important;
-}
-[data-testid="stMetricValue"] { font-family: 'Inter', sans-serif !important; font-size: 28px !important; font-weight: 700 !important; color: #1a1a1a !important; }
-[data-testid="stMetricLabel"] { font-family: 'Inter', sans-serif !important; font-size: 11px !important; letter-spacing: 0.05em !important; color: #6b7280 !important; text-transform: uppercase !important; }
-
-.stTabs [data-baseweb="tab-list"] { background: transparent !important; border-bottom: 1px solid #f3f4f6 !important; gap: 0 !important; }
-.stTabs [data-baseweb="tab"] {
-    font-family: 'Inter', sans-serif !important; font-size: 13px !important; font-weight: 500 !important;
-    color: #9ca3af !important;
-    padding: 10px 20px !important; background: transparent !important; border: none !important;
-    border-bottom: 2px solid transparent !important; margin-bottom: -1px !important;
-}
-.stTabs [aria-selected="true"] { color: #1a1a1a !important; border-bottom-color: #1a1a1a !important; }
-.stTabs [data-baseweb="tab-panel"] { padding-top: 24px !important; }
-
-.stProgress > div > div > div { background: #1a1a1a !important; border-radius: 2px !important; }
-.stProgress > div > div { background: #f3f4f6 !important; border-radius: 2px !important; }
-
-.streamlit-expanderHeader {
-    background: #ffffff !important; border: 1px solid #f3f4f6 !important; border-radius: 8px !important;
-    font-family: 'Inter', sans-serif !important; font-size: 13px !important; font-weight: 600 !important;
-    color: #374151 !important;
-}
-.stSuccess, .stInfo, .stWarning, .stError { border-radius: 8px !important; font-family: 'Inter', sans-serif !important; font-size: 14px !important; }
-::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 2px; }
-
-.sec-label {
-    font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600;
-    letter-spacing: 0.08em; text-transform: uppercase; color: #6b7280; margin-bottom: 12px;
-    display: flex; align-items: center; gap: 10px;
-}
-.sec-label::after { content:''; flex:1; height:1px; background:#f3f4f6; }
-
-.insight-card {
-    background: #ffffff; border: 1px solid #f3f4f6; border-left: 3px solid #1a1a1a;
-    border-radius: 8px; padding: 14px 18px; margin-bottom: 10px;
-    font-size: 14px; line-height: 1.7; color: #374151;
-}
-.signal-card {
-    background: #ffffff; border: 1px solid #f3f4f6; border-radius: 8px;
-    padding: 12px 16px; margin-bottom: 8px; font-size: 13px; line-height: 1.6; color: #374151;
-}
-.av {
-    width: 38px; height: 38px; border-radius: 50%; background: #1a1a1a; color: white;
-    display: inline-flex; align-items: center; justify-content: center;
-    font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600; flex-shrink: 0;
-}
-.pill-tag { display: inline-block; font-family: 'Inter', sans-serif; font-size: 11px; padding: 3px 10px; border: 1px solid #e5e7eb; border-radius: 20px; color: #6b7280; margin: 2px; }
-.pill-red   { border-color: #fecaca; color: #dc2626; background: #fef2f2; }
-.pill-amber { border-color: #fde68a; color: #d97706; background: #fffbeb; }
-.score-hot  { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
-.score-warm { background: #fffbeb; color: #d97706; border: 1px solid #fde68a; }
-.score-cold { background: #f9fafb; color: #6b7280; border: 1px solid #e5e7eb; }
-.score-badge {
-    display: inline-block; font-family: 'Inter', sans-serif; font-weight: 600;
-    font-size: 12px; letter-spacing: 0.02em; text-transform: uppercase; padding: 6px 16px; border-radius: 20px;
-}
-
-.stApp [data-testid="stFormSubmitButton"] button,
-.stApp [data-testid="stFormSubmitButton"] button * {
-    color: white !important;
-    font-family: 'Inter', sans-serif !important;
-    font-weight: 600 !important;
-}
-[data-testid="stFormSubmitButton"] button {
-    background: #1a1a1a !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 8px !important;
-    font-family: 'Inter', sans-serif !important;
-    font-weight: 600 !important;
-    font-size: 13px !important;
-    padding: 10px 24px !important;
-}
-[data-testid="stFormSubmitButton"] button:hover {
-    background: #374151 !important;
-}
-
-/* Safe UI polish layer */
-:root {
-    --ui-bg: #f8f9fb;
-    --ui-surface: #ffffff;
-    --ui-border: #e7e9ee;
-    --ui-muted: #667085;
-    --ui-ink: #171717;
-}
-
-html, body, [class*="css"], .stApp { background: var(--ui-bg) !important; }
-.block-container { padding-top: 1.35rem !important; max-width: 1440px !important; }
-
-[data-testid="metric-container"] {
-    border-color: var(--ui-border) !important;
-    border-radius: 8px !important;
-    box-shadow: 0 5px 14px rgba(17, 24, 39, 0.045) !important;
-}
-[data-testid="stMetricValue"] { font-size: 25px !important; }
-
-.stButton > button,
-.stDownloadButton > button,
-[data-testid="stFormSubmitButton"] button {
-    border-radius: 8px !important;
-    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease !important;
-}
-.stButton > button:hover,
-[data-testid="stFormSubmitButton"] button:hover {
-    box-shadow: 0 7px 16px rgba(17, 24, 39, 0.12) !important;
-}
-
-.stTextInput > div > div > input,
-.stTextArea > div > div > textarea {
-    border-color: var(--ui-border) !important;
-    border-radius: 8px !important;
-}
-.stTextInput > div > div > input:focus,
-.stTextArea > div > div > textarea:focus {
-    border-color: var(--ui-ink) !important;
-    box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.08) !important;
-}
-
-.stTabs [data-baseweb="tab-list"] {
-    background: var(--ui-surface) !important;
-    border: 1px solid var(--ui-border) !important;
-    border-radius: 8px !important;
-    padding: 4px !important;
-}
-.stTabs [data-baseweb="tab"] {
-    border-radius: 8px !important;
-    padding: 9px 16px !important;
-    border-bottom: 0 !important;
-    margin-bottom: 0 !important;
-}
-.stTabs [aria-selected="true"] {
-    background: #171717 !important;
-    color: #ffffff !important;
-}
-.stTabs [aria-selected="true"] * { color: #ffffff !important; }
-
-.insight-card, .signal-card {
-    border-color: var(--ui-border) !important;
-    box-shadow: 0 3px 10px rgba(17, 24, 39, 0.035);
-}
-.score-badge, .pill-tag { border-radius: 8px !important; }
-.sec-label { color: var(--ui-muted) !important; }
-
-/* Caret visibility fix */
-.stTextInput input,
-.stTextArea textarea,
-div[data-baseweb="input"] input,
-div[data-baseweb="textarea"] textarea,
-input[type="text"],
-input[type="password"],
-input[type="search"],
-textarea {
-    caret-color: #111111 !important;
-    color: #111111 !important;
-    -webkit-text-fill-color: #111111 !important;
-}
-.stTextInput input:focus,
-.stTextArea textarea:focus,
-div[data-baseweb="input"] input:focus,
-div[data-baseweb="textarea"] textarea:focus,
-input[type="text"]:focus,
-input[type="password"]:focus,
-input[type="search"]:focus,
-textarea:focus {
-    caret-color: #111111 !important;
-    color: #111111 !important;
-    -webkit-text-fill-color: #111111 !important;
-}</style>
-""", unsafe_allow_html=True)
-
-# ── CLIENTS ───────────────────────────────────────────────────────────────────
-deepseek = OpenAI(api_key=st.secrets["DEEPSEEK_API_KEY"], base_url="https://api.deepseek.com")
-
-# ── FIRECRAWL FUNCTIONS ───────────────────────────────────────────────────────
-def firecrawl_scrape_single(url):
+def firecrawl_scrape_single(url, firecrawl_key):
     try:
         resp = http.post(
-            "https://api.firecrawl.dev/v1/credits",
-            headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}", "Content-Type": "application/json"},
+            "https://api.firecrawl.dev/v1/scrape",
+            headers={"Authorization": f"Bearer {firecrawl_key}", "Content-Type": "application/json"},
             json={"url": url, "formats": ["markdown"]}, timeout=20
         )
         md = resp.json().get("data", {}).get("markdown", "")
@@ -416,9 +199,7 @@ def firecrawl_scrape_single(url):
         return []
 
 
-def firecrawl_multi_scrape(base_url):
-    from urllib.parse import urljoin, urlparse
-    from bs4 import BeautifulSoup
+def firecrawl_multi_scrape(base_url, firecrawl_key):
     results = []
     visited = set()
 
@@ -429,7 +210,7 @@ def firecrawl_multi_scrape(base_url):
         try:
             resp = http.post(
                 "https://api.firecrawl.dev/v1/scrape",
-                headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}", "Content-Type": "application/json"},
+                headers={"Authorization": f"Bearer {firecrawl_key}", "Content-Type": "application/json"},
                 json={"url": url, "formats": ["markdown"]}, timeout=20
             )
             md = resp.json().get("data", {}).get("markdown", "")
@@ -479,13 +260,11 @@ def firecrawl_multi_scrape(base_url):
 
 def direct_fetch(url, max_subpages=14):
     try:
-        from bs4 import BeautifulSoup
-        from urllib.parse import urljoin, urlparse
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept-Language": "en-GB,en;q=0.9",
-            "Accept": "text/html,application/xhtml+xml,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Cookie": "cookielawinfo-checkbox-necessary=yes; cookielawinfo-checkbox-analytics=yes; cookielawinfo-checkbox-functional=yes; cookielawinfo-checkbox-performance=yes; cookielawinfo-checkbox-advertisement=yes; viewed_cookie_policy=yes; cookie_consent=accepted; wordpress_gdpr_cookies_allowed=all; gdpr=1; euconsent=1"
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Cookie": "cookielawinfo-checkbox-necessary=yes; cookielawinfo-checkbox-analytics=yes; viewed_cookie_policy=yes; cookie_consent=accepted; gdpr=1; euconsent=1"
         }
         resp = http.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(resp.text, "html.parser")
@@ -493,13 +272,11 @@ def direct_fetch(url, max_subpages=14):
             tag.decompose()
         text = soup.get_text(separator="\n", strip=True)
 
-        # Only add homepage if it has real content
         if len(text) > 500:
             results = [{"url": url, "markdown": text}]
         else:
             results = []
 
-        # Find and prioritise subpages
         domain = urlparse(url).netloc
         visited = {url}
         priority_keywords = ["people","team","our-team","staff","leadership","directors","who-we-are",
@@ -510,9 +287,7 @@ def direct_fetch(url, max_subpages=14):
             href = a["href"].strip()
             full = urljoin(url, href)
             parsed = urlparse(full)
-            if (parsed.netloc == domain and
-                "#" not in full and
-                full not in visited and
+            if (parsed.netloc == domain and "#" not in full and full not in visited and
                 not any(full.endswith(ext) for ext in [".pdf",".jpg",".png",".zip"])):
                 all_links.append(full)
                 visited.add(full)
@@ -549,28 +324,17 @@ def direct_fetch(url, max_subpages=14):
     except:
         return []
 
+
 def serpapi_search(query, num_results=10):
-    try:
-        api_key = st.secrets["SERPER_API_KEY"]
-    except:
+    if not SERPER_API_KEY:
         return []
-
-    if not api_key:
-        return []
-
     try:
         resp = http.get(
             "https://serpapi.com/search.json",
-            params={
-                "engine": "google",
-                "q": query,
-                "api_key": api_key,
-                "num": num_results,
-            },
+            params={"engine": "google", "q": query, "api_key": SERPER_API_KEY, "num": num_results},
             timeout=20
         )
-        data = resp.json()
-        return data.get("organic_results", []) or []
+        return resp.json().get("organic_results", []) or []
     except:
         return []
 
@@ -578,101 +342,52 @@ def serpapi_search(query, num_results=10):
 def format_serpapi_results(results, max_chars=4000):
     lines = []
     for item in results:
-        title = item.get("title", "")
-        snippet = item.get("snippet", "")
-        link = item.get("link", "")
-        parts = [p for p in [title, snippet, link] if p]
+        parts = [p for p in [item.get("title",""), item.get("snippet",""), item.get("link","")] if p]
         if parts:
             lines.append(" | ".join(parts))
     return "\n".join(lines)[:max_chars]
 
 
-def extract_employee_count_from_text(text):
-    if not text:
-        return ""
-    normalized = re.sub(r"\s+", " ", text)
-    patterns = [
-        r"(\d[\d,]*(?:\+)?(?:\s*[-â€“]\s*\d[\d,]*(?:\+)?)?)\s+(?:employees|staff)",
-        r"(?:company size|employees)[:\s]+(\d[\d,]*(?:\+)?(?:\s*[-â€“]\s*\d[\d,]*(?:\+)?)?)",
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, normalized, re.IGNORECASE)
-        if match:
-            count = re.sub(r"\s*[-â€“]\s*", "-", match.group(1).strip())
-            return f"{count} employees"
-    return ""
-
-
 def fetch_serpapi_site_results(url):
-    from urllib.parse import urlparse
-
     results = []
     seen = set()
-
     parsed = urlparse(url)
     domain = parsed.netloc
     base = f"{parsed.scheme}://{parsed.netloc}"
-    urls_to_try = [
-        url,
-        f"{base}/our-team",
-        f"{base}/team",
-        f"{base}/people",
-        f"{base}/about-us",
-        f"{base}/about",
-    ]
 
     queries = [
         f"site:{domain} team OR people OR staff OR leadership",
         f"site:{domain} engineers OR directors OR principal OR associate OR consultant",
     ]
 
-    for target_url in urls_to_try:
-        queries.append(f"site:{domain} \"{target_url}\"")
-
     for query in queries:
         for item in serpapi_search(query, num_results=8):
             link = item.get("link", "")
             if not link or domain not in link or link in seen:
                 continue
-            text = " | ".join([p for p in [item.get("title", ""), item.get("snippet", ""), link] if p])
+            text = " | ".join([p for p in [item.get("title",""), item.get("snippet",""), link] if p])
             if len(text) > 80:
                 results.append({"url": link, "markdown": text})
                 seen.add(link)
-
     return results
 
 
 def scrape_with_scrapingbee(url):
+    if not SCRAPINGBEE_KEY:
+        return []
     try:
-        try:
-            api_key = st.secrets["SCRAPINGBEE_KEY"]
-        except:
-            return []
-
-        if not api_key:
-            return []
-
-        from bs4 import BeautifulSoup
-        from urllib.parse import urljoin, urlparse
-
-        headers_sb = {
-            "api_key": api_key,
-            "render_js": "true",
-            "wait": "2000",
-        }
-
+        headers_sb = {"api_key": SCRAPINGBEE_KEY, "render_js": "true", "wait": "2000"}
         results = []
         visited = set()
 
         def sb_scrape(target_url):
             if target_url in visited:
-                return None
+                return None, None
             visited.add(target_url)
             try:
                 resp = http.get(
                     "https://app.scrapingbee.com/api/v1/",
-                    params={**headers_sb, "url": target_url},
-                    timeout=30
+                    params={**headers_sb, "url": target_url}, timeout=30
                 )
                 soup = BeautifulSoup(resp.text, "html.parser")
                 for tag in soup(["script", "style", "noscript"]):
@@ -684,13 +399,11 @@ def scrape_with_scrapingbee(url):
                 pass
             return None, None
 
-        # Scrape homepage
         home_result, home_soup = sb_scrape(url)
         if not home_result:
             return []
         results.append(home_result)
 
-        # Find and scrape priority subpages
         if home_soup:
             domain = urlparse(url).netloc
             priority_keywords = ["team","people","about","projects","services","careers","who-we-are","our-work"]
@@ -698,15 +411,12 @@ def scrape_with_scrapingbee(url):
             for a in home_soup.find_all("a", href=True):
                 href = a["href"].strip()
                 full = urljoin(url, href)
-                parsed = urlparse(full)
-                if (parsed.netloc == domain and
-                    "#" not in full and
-                    full != url and
+                parsed_link = urlparse(full)
+                if (parsed_link.netloc == domain and "#" not in full and full != url and
                     full not in visited and
                     not any(full.endswith(ext) for ext in [".pdf",".jpg",".png",".zip"])):
                     links.append(full)
 
-            # Sort by priority
             def priority_score(link):
                 lower = link.lower()
                 for i, kw in enumerate(priority_keywords):
@@ -715,286 +425,62 @@ def scrape_with_scrapingbee(url):
                 return 999
 
             sorted_links = sorted(set(links), key=priority_score)
-
-            # Scrape up to 5 priority subpages
             with ThreadPoolExecutor(max_workers=5) as executor:
                 futures = [executor.submit(sb_scrape, link) for link in sorted_links[:5]]
                 for future in as_completed(futures):
                     result, _ = future.result()
                     if result:
                         results.append(result)
-
         return results
-
     except:
         return []
 
 
-def search_people_via_serpapi(company_name, domain):
+def firecrawl_crawl(url, firecrawl_key, max_pages=30, status_callback=None):
     try:
-        all_text = ""
-
-        queries = [
-            f"site:{domain} (team OR people OR staff OR leadership OR directors OR engineers OR consultants) (structural OR civil OR bridge OR geotechnical OR BIM OR FEA)",
-            f'site:linkedin.com/in "{company_name}" (engineer OR structural OR civil OR bridge OR geotechnical OR BIM)',
-            f'site:linkedin.com/in "{company_name}" (director OR principal OR associate OR partner OR head OR manager)',
-            f'"{company_name}" (ANSYS OR ABAQUS OR SAP2000 OR ETABS OR STAAD OR LUSAS OR MIDAS OR PLAXIS OR FEM OR FEA)',
-            f'"{company_name}" (hiring OR careers OR jobs OR vacancies OR graduate) (structural OR civil OR BIM OR FEA)',
-            f'"{company_name}" (project OR bridge OR infrastructure OR building OR tunnel OR metro) (engineering OR structural)'
-        ]
-
-        for q in queries:
-            results = serpapi_search(q, num_results=8)
-            all_text += "\n\n" + format_serpapi_results(results, max_chars=1500)
-
-        return all_text[:8000]
-    except:
-        return ""
-
-def lookup_companies_house(company_name, locations=None):
-    try:
-        from bs4 import BeautifulSoup
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        }
-
-        # Detect country from locations
-        uk_keywords = [
-                    "london", "manchester", "birmingham", "leeds", "bristol", "edinburgh",
-                    "glasgow", "liverpool", "sheffield", "cardiff", "belfast", "nottingham",
-                    "uk", "england", "scotland", "wales", "northern ireland", "united kingdom", "britain"
-                ]
-        
-        eu_keywords = [
-                    # Western Europe
-                    "germany", "berlin", "munich", "hamburg", "frankfurt", "cologne", "düsseldorf",
-                    "france", "paris", "lyon", "marseille", "toulouse", "bordeaux",
-                    "netherlands", "amsterdam", "rotterdam", "the hague", "eindhoven",
-                    "belgium", "brussels", "antwerp", "ghent", "bruges",
-                    "luxembourg",
-                    "switzerland", "zurich", "geneva", "basel", "bern",
-                    "austria", "vienna", "graz", "salzburg", "innsbruck",
-                    "ireland", "dublin", "cork", "galway",
-                    # Southern Europe
-                    "spain", "madrid", "barcelona", "seville", "valencia", "bilbao",
-                    "portugal", "lisbon", "porto",
-                    "italy", "rome", "milan", "naples", "turin", "florence", "bologna",
-                    "greece", "athens", "thessaloniki",
-                    "malta", "valletta",
-                    "cyprus", "nicosia",
-                    # Northern Europe
-                    "sweden", "stockholm", "gothenburg", "malmö",
-                    "norway", "oslo", "bergen", "trondheim",
-                    "denmark", "copenhagen", "aarhus",
-                    "finland", "helsinki", "tampere", "espoo",
-                    "iceland", "reykjavik",
-                    # Eastern Europe
-                    "poland", "warsaw", "krakow", "wroclaw", "gdansk", "poznan",
-                    "czech", "prague", "brno", "ostrava",
-                    "slovakia", "bratislava", "kosice",
-                    "hungary", "budapest", "debrecen",
-                    "romania", "bucharest", "cluj", "timisoara", "iasi",
-                    "bulgaria", "sofia", "plovdiv", "varna",
-                    "croatia", "zagreb", "split", "rijeka",
-                    "slovenia", "ljubljana", "maribor",
-                    "serbia", "belgrade", "novi sad",
-                    "bosnia", "sarajevo", "banja luka",
-                    "montenegro", "podgorica",
-                    "north macedonia", "skopje",
-                    "albania", "tirana",
-                    "kosovo", "pristina",
-                    # Baltic States
-                    "estonia", "tallinn", "tartu",
-                    "latvia", "riga", "daugavpils",
-                    "lithuania", "vilnius", "kaunas",
-                    # Other
-                    "moldova", "chisinau",
-                    "ukraine", "kyiv", "kharkiv", "lviv", "odessa",
-                    "belarus", "minsk",
-                    "turkey", "istanbul", "ankara", "izmir",
-                    "georgia", "tbilisi",
-                    "armenia", "yerevan",
-                    "azerbaijan", "baku",
-                    "israel", "tel aviv", "jerusalem",
-                    "morocco", "casablanca", "rabat",
-                    "tunisia", "tunis",
-                    "egypt", "cairo", "alexandria",
-                ]
-
-        location_str = " ".join(locations or []).lower()
-        is_uk = any(kw in location_str for kw in uk_keywords)
-        is_eu = any(kw in location_str for kw in eu_keywords)
-
-        all_text = ""
-        director_count = 0
-
-        # ── UK — Companies House API ──────────────────────────────────────
-        if is_uk or (not is_uk and not is_eu):
-            try:
-                # Search via Companies House API
-                search_resp = http.get(
-                    f"https://api.company-information.service.gov.uk/search/companies?q={company_name.replace(' ', '+')}",
-                    auth=(st.secrets.get("COMPANIES_HOUSE_KEY", ""), ""),
-                    timeout=10
-                )
-                results = search_resp.json().get("items", [])
-                if results:
-                    company_number = results[0].get("company_number", "")
-                    # Get officers
-                    officers_resp = http.get(
-                        f"https://api.company-information.service.gov.uk/company/{company_number}/officers",
-                        auth=(st.secrets.get("COMPANIES_HOUSE_KEY", ""), ""),
-                        timeout=10
-                    )
-                    officers = officers_resp.json().get("items", [])
-                    officer_text = "\n".join([
-                        f"{o.get('name', '')} — {o.get('officer_role', '')} (appointed {o.get('appointed_on', '')})"
-                        for o in officers if o.get('resigned_on') is None
-                    ])
-                    company_info = results[0]
-                    text = f"""Company: {company_info.get('title', '')}
-Status: {company_info.get('company_status', '')}
-Type: {company_info.get('company_type', '')}
-Incorporated: {company_info.get('date_of_creation', '')}
-Address: {company_info.get('registered_office_address', {}).get('address_line_1', '')}
-
-Active Officers:
-{officer_text}"""
-                    director_count = len([o for o in officers if 'director' in o.get('officer_role','').lower()])
-                    all_text += f"[Companies House UK]\n{text}"
-            except:
-                pass
-
-        # ── EU — OpenCorporates ───────────────────────────────────────────
-        if is_eu or (not is_uk and not is_eu):
-            try:
-                oc_url = f"https://opencorporates.com/companies?q={company_name.replace(' ', '+')}&utf8=✓"
-                resp = http.get(oc_url, headers=headers, timeout=10)
-                soup = BeautifulSoup(resp.text, "html.parser")
-                result = soup.find("a", class_="company_search_result")
-                if result:
-                    company_url = "https://opencorporates.com" + result["href"]
-                    resp2 = http.get(company_url, headers=headers, timeout=10)
-                    soup2 = BeautifulSoup(resp2.text, "html.parser")
-                    text = soup2.get_text(separator="\n", strip=True)
-                    director_count += text.lower().count("director")
-                    all_text += f"\n\n[OpenCorporates EU]\n{text[:3000]}"
-            except:
-                pass
-
-        # ── EU Tenders — TED Europa ───────────────────────────────────────
-        try:
-            ted_url = f"https://ted.europa.eu/en/search?scope=NOTICE&query={company_name.replace(' ', '+')}&sortColumn=ND&sortOrder=DESC"
-            resp = http.get(ted_url, headers=headers, timeout=10)
-            soup = BeautifulSoup(resp.text, "html.parser")
-            for tag in soup(["script", "style"]):
-                tag.decompose()
-            text = soup.get_text(separator="\n", strip=True)
-            if len(text) > 200:
-                all_text += f"\n\n[EU Tenders TED]\n{text[:2000]}"
-        except:
-            pass
-
-        return all_text[:6000], director_count
-
-    except:
-        return "", 0
-
-
-
-def lookup_linkedin_company(company_name):
-    try:
-        results = []
-        queries = [
-            f'site:linkedin.com/company "{company_name}" employees',
-            f'"{company_name}" "employees" "LinkedIn"',
-            f'"{company_name}" "company size"',
-        ]
-        for query in queries:
-            results.extend(serpapi_search(query, num_results=6))
-
-        text = format_serpapi_results(results, max_chars=5000)
-        employee_signal = extract_employee_count_from_text(text)
-
-        return text, employee_signal
-    except:
-        return "", ""
-def lookup_glassdoor(company_name, domain):
-    try:
-        all_text = ""
-
-        all_text += format_serpapi_results(
-            serpapi_search(f'glassdoor "{company_name}" reviews engineers software', num_results=10),
-            max_chars=2000
-        )
-
-        all_text += "\n\n" + format_serpapi_results(
-            serpapi_search(f'"{company_name}" employees size glassdoor linkedin indeed', num_results=10),
-            max_chars=2000
-        )
-
-        review_count = all_text.lower().count("glassdoor")
-
-        return all_text[:5000], review_count
-    except:
-        return "", 0
-
-
-def lookup_planning_portal(company_name):
-    try:
-        text = format_serpapi_results(
-            serpapi_search(f'"{company_name}" planning application structural engineer', num_results=10),
-            max_chars=3000
-        )
-
-        project_count = text.lower().count("planning")
-        return text, project_count
-    except:
-        return "", 0
-
-def firecrawl_crawl(url, max_pages=30):
-    try:
-        # First try scraping with actions to handle cookie popups
+        # Try scraping with actions for cookie popups
+        if status_callback:
+            status_callback("crawling", f"Scraping homepage...", 6)
         action_resp = http.post(
             "https://api.firecrawl.dev/v1/scrape",
-            headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}", "Content-Type": "application/json"},
+            headers={"Authorization": f"Bearer {firecrawl_key}", "Content-Type": "application/json"},
             json={
-                "url": url,
-                "formats": ["markdown"],
+                "url": url, "formats": ["markdown"],
                 "actions": [
                     {"type": "wait", "milliseconds": 2000},
-                    {"type": "click", "selector": "button[class*='accept'], button[id*='accept'], button[class*='agree'], button[class*='consent'], .cookie-accept, #cookie-accept, .accept-cookies"},
+                    {"type": "click", "selector": "button[class*='accept'], button[id*='accept'], button[class*='agree'], .cookie-accept, #cookie-accept"},
                     {"type": "wait", "milliseconds": 1000}
                 ]
-            },
-            timeout=30
+            }, timeout=30
         )
-        action_data = action_resp.json()
-        homepage_md = action_data.get("data", {}).get("markdown", "")
+        homepage_md = action_resp.json().get("data", {}).get("markdown", "")
 
         if homepage_md and len(homepage_md) > 500:
-            # Got homepage, now crawl the rest
             results = [{"url": url, "markdown": homepage_md}]
             try:
+                if status_callback:
+                    status_callback("crawling", f"Homepage done, crawling subpages...", 8)
                 resp = http.post(
                     "https://api.firecrawl.dev/v1/crawl",
-                    headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}", "Content-Type": "application/json"},
+                    headers={"Authorization": f"Bearer {firecrawl_key}", "Content-Type": "application/json"},
                     json={"url": url, "limit": max_pages, "scrapeOptions": {"formats": ["markdown"]}}, timeout=30
                 )
                 job_id = resp.json().get("id")
                 if job_id:
-                    import time
-                    for _ in range(40):
+                    for poll_i in range(40):
                         time.sleep(3)
                         poll = http.get(
                             f"https://api.firecrawl.dev/v1/crawl/{job_id}",
-                            headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}"},
-                            timeout=15
+                            headers={"Authorization": f"Bearer {firecrawl_key}"}, timeout=15
                         ).json()
                         status = poll.get("status")
-                        pages  = poll.get("data", [])
-                        if status == "completed" or (status == "scraping" and len(pages) >= max_pages - 2):
+                        pages = poll.get("data", [])
+                        page_count = len(pages)
+                        # Live progress during polling
+                        if status_callback:
+                            crawl_pct = min(8 + (page_count / max_pages) * 17, 25)
+                            status_callback("crawling", f"Crawled {page_count} pages...", crawl_pct)
+                        if status == "completed" or (status == "scraping" and page_count >= max_pages - 2):
                             extra = [
                                 {"url": p.get("metadata", {}).get("sourceURL", url), "markdown": p.get("markdown", "")}
                                 for p in pages if p.get("markdown", "").strip() and len(p.get("markdown","")) > 500
@@ -1007,118 +493,82 @@ def firecrawl_crawl(url, max_pages=30):
                 pass
             return results
 
-        # Action scrape didn't work, try normal crawl
+        # Fallback to normal crawl
+        if status_callback:
+            status_callback("crawling", f"Starting full crawl...", 8)
         resp = http.post(
             "https://api.firecrawl.dev/v1/crawl",
-            headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}", "Content-Type": "application/json"},
+            headers={"Authorization": f"Bearer {firecrawl_key}", "Content-Type": "application/json"},
             json={"url": url, "limit": max_pages, "scrapeOptions": {"formats": ["markdown"]}}, timeout=30
         )
         job_id = resp.json().get("id")
         if not job_id:
-            return firecrawl_multi_scrape(url)
+            return firecrawl_multi_scrape(url, firecrawl_key)
 
-        import time
-        for _ in range(36):
+        for poll_i in range(36):
             time.sleep(5)
             poll = http.get(
                 f"https://api.firecrawl.dev/v1/crawl/{job_id}",
-                headers={"Authorization": f"Bearer {st.session_state['firecrawl_key']}"},
-                timeout=15
+                headers={"Authorization": f"Bearer {firecrawl_key}"}, timeout=15
             ).json()
             status = poll.get("status")
-            pages  = poll.get("data", [])
-            if status == "completed" or (status == "scraping" and len(pages) >= max_pages - 2):
+            pages = poll.get("data", [])
+            page_count = len(pages)
+            # Live progress during polling
+            if status_callback:
+                crawl_pct = min(8 + (page_count / max_pages) * 17, 25)
+                status_callback("crawling", f"Crawled {page_count} pages...", crawl_pct)
+            if status == "completed" or (status == "scraping" and page_count >= max_pages - 2):
                 results = [
                     {"url": p.get("metadata", {}).get("sourceURL", url), "markdown": p.get("markdown", "")}
-                    for p in pages if p.get("markdown", "").strip() and len(p.get("markdown","")) > 500
+                    for p in pages if p.get("markdown","").strip() and len(p.get("markdown","")) > 500
                 ]
                 if results:
                     return results
-                return firecrawl_multi_scrape(url)
+                return firecrawl_multi_scrape(url, firecrawl_key)
             if status == "failed":
                 break
 
-        return firecrawl_multi_scrape(url)
+        return firecrawl_multi_scrape(url, firecrawl_key)
     except:
-        return firecrawl_multi_scrape(url)
-
-def extract_credit_value(data):
-    if isinstance(data, dict):
-        for key in ("credits", "remaining", "remainingCredits", "remaining_credits", "availableCredits", "available_credits"):
-            value = data.get(key)
-            if value not in (None, ""):
-                return value
-        for value in data.values():
-            found = extract_credit_value(value)
-            if found not in (None, ""):
-                return found
-    elif isinstance(data, list):
-        for item in data:
-            found = extract_credit_value(item)
-            if found not in (None, ""):
-                return found
-    return None
+        return firecrawl_multi_scrape(url, firecrawl_key)
 
 
-@st.cache_data(ttl=300)
-def get_firecrawl_credits(firecrawl_key):
-    if not firecrawl_key:
-        return None
-    try:
-        headers = {"Authorization": f"Bearer {firecrawl_key}"}
-        resp = http.get(
-            "https://api.firecrawl.dev/v1/team/credit-usage",
-            headers=headers,
-            timeout=10
-        )
-        if resp.status_code == 404:
-            resp = http.get(
-                "https://api.firecrawl.dev/v2/team/credit-usage",
-                headers=headers,
-                timeout=10
-            )
-        if resp.status_code >= 400:
-            return None
-        return extract_credit_value(resp.json())
-    except:
-        return None
-# ── TEXT PREP ─────────────────────────────────────────────────────────────────
+# ── AI ANALYSIS ──────────────────────────────────────────────────────────────
+
 def build_corpus(pages):
-    import re as _re
     chunks = []
     for p in pages:
         md = p.get("markdown", "").strip()
         if not md:
             continue
-        # Strip image tags to reduce noise
-        md = _re.sub(r'!\[.*?\]\(.*?\)', '', md)
-        md = _re.sub(r'\n{3,}', '\n\n', md)
+        md = re.sub(r'!\[.*?\]\(.*?\)', '', md)
+        md = re.sub(r'\n{3,}', '\n\n', md)
         chunks.append(f"[PAGE: {p.get('url','')}]\n{md[:15000]}")
     return "\n\n---\n\n".join(chunks)[:40000]
 
-# ── AI ────────────────────────────────────────────────────────────────────────
-def ask_deepseek(system, user, max_tokens=2000, temperature=0.1, api_key=None):
+
+def ask_deepseek(system, user, max_tokens=2000, temperature=0.1):
     try:
-        client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com") if api_key else deepseek
-        resp = client.chat.completions.create(
+        resp = deepseek.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
             temperature=temperature, max_tokens=max_tokens
         )
         return resp.choices[0].message.content.strip()
     except Exception as e:
-        st.error(f"DeepSeek API error: {str(e)}")
+        print(f"DeepSeek API error: {e}")
         return "{}"
 
 
 def analyze_company(corpus):
     return ask_deepseek(
-        "You are a B2B sales analyst for MIDAS IT (FEA/FEM software). Extract facts only. Respond in pure JSON, no markdown. CRITICAL: Translate ALL descriptive content (overviews, capabilities, project types, roles, descriptions) into English. However, NEVER translate or modify people's names — keep all person names exactly as written on the website, including Cyrillic, accented, or special characters. Do not transliterate names.",
+        "You are a B2B sales analyst for MIDAS IT (FEA/FEM software). Extract facts only. Respond in pure JSON, no markdown. CRITICAL: Translate ALL descriptive content into English. However, NEVER translate or modify people's names — keep all person names exactly as written.",
         f"""Return ONLY valid JSON:
 {{
   "company_name": "string",
   "tagline": "string or null",
-  "locations": ["ONLY cities explicitly stated as offices — empty array if none found"],
+  "locations": ["cities where the company has offices or is based — include headquarters, branch offices, and any city mentioned as a company location"],
   "founded": "year or null",
   "employee_count": "string or null",
   "overview": ["bullet 1", "bullet 2", "bullet 3"],
@@ -1127,21 +577,18 @@ def analyze_company(corpus):
   "software_mentioned": ["any FEA/CAD/BIM tools"],
   "people": [{{"name": "Full Name", "role": "Job Title", "tier": "Owner|Founder|Director|Principal|Senior|Engineer|Graduate|Technician|Other"}}],
   "open_roles": [{{"title": "Job title", "skills": ["skill1"], "fem_mentioned": true}}],
-  "projects": [{{"name": "Project name", "type": "Bridge|Building|Metro|Infrastructure|Residential|Industrial|Other", "location": "City or null", "client": "Client name or null", "description": "One sentence summary", "fem_relevant": true}}],
+  "projects": [{{"name": "Project name", "type": "Bridge|Building|Metro|Infrastructure|Residential|Industrial|Geotechnical|Tunnel|Foundation|Slope|Dam|Retaining Wall|Other", "location": "City or null", "client": "Client name or null", "description": "One sentence summary", "fem_relevant": true}}],
   "confidence": "High|Medium|Low",
-  "confidence": "High|Medium|Low",
-  "confidence_reason": "One sentence explaining why confidence is High, Medium or Low based on data quality and completeness of the website"
+  "confidence_reason": "One sentence explaining why"
 }}
-Extract ALL people. For locations: ONLY explicitly stated office cities.
-Extract ONLY engineering and technical staff — directors, engineers, technicians, consultants.
-EXCLUDE: blog authors, contributing authors, lead authors, writers, journalists, or anyone whose role relates to writing/publishing rather than engineering.
-Only include people who work AT the company as engineers or technical staff.
-For locations: ONLY explicitly stated office cities.
-For employee_count: check ALL sources including Glassdoor, LinkedIn, Companies House and the website. Glassdoor often shows ranges like "51-200 employees" — use this if the website doesn't state it explicitly.
-For projects: extract ALL completed or ongoing projects mentioned anywhere on the site — project pages, case studies, portfolio sections, news. Include project name, type, location if stated, client if stated, and a one sentence description. Set fem_relevant to true if the project involved structural analysis, FEA, FEM, complex geometry, bridges, or heavy civil engineering.
+Extract ALL people — engineering and technical staff only.
+For locations: include any city mentioned as company headquarters, office, or base location — check footer addresses, contact pages, and about sections.
+For employee_count: check ALL sources including Glassdoor, LinkedIn, Companies House.
+For projects: extract ALL completed or ongoing projects mentioned anywhere.
+For fem_relevant: set to true if the project involves structural analysis, FEA, FEM, geotechnical modelling, soil analysis, slope stability, foundation design, tunnelling, or any work where engineering analysis software would be used.
 Website content:
 {corpus}""",
-        max_tokens=8000        
+        max_tokens=8000
     )
 
 
@@ -1214,7 +661,7 @@ POSITIONING: Best global design tool for building and general structure firms.
 ════════════════════════════════════════════════
 3. MIDAS FEA NX — Detailed Local & Nonlinear Analysis
 ════════════════════════════════════════════════
-WHAT IT IS: High-end finite element analysis software designed for detailed, local, and nonlinear analysis of civil and structural systems. Used when global tools are not sufficient.
+WHAT IT IS: High-end finite element analysis software designed for detailed, local, and nonlinear analysis of civil and structural systems. Used when global tools are not sufficient. Also used as a research and academic FEM platform.
 
 WHAT IT DOES:
 - 2D and 3D element modelling (plates, solids) for complex geometry
@@ -1232,7 +679,7 @@ KEY CAPABILITIES:
 - Parallel computing for large models
 - Modern UI for faster preprocessing and postprocessing
 
-TYPICAL USE CASES:
+TYPICAL USE CASES — COMMERCIAL:
 - Steel connections, anchor zones, bridge joints
 - Deep beams, shear walls, slabs
 - Bridge local analysis — anchorage zones, bearings
@@ -1240,8 +687,34 @@ TYPICAL USE CASES:
 - Failure analysis — concrete cracking, fatigue
 - Nonlinear problems — large deformation, contact problems
 
-VALUE PROPOSITION: High accuracy for complex local analysis that global tools cannot handle. Seamless integration with CIVIL NX and GEN NX.
-POSITIONING: Detailed local analysis tool — always pairs with CIVIL NX or GEN NX.
+TYPICAL USE CASES — RESEARCH & ACADEMIC:
+- University structural engineering research (PhD, Masters thesis work)
+- Parametric FEM studies — material model validation, mesh sensitivity analysis
+- Novel structural system investigation — new connection types, innovative materials
+- Concrete cracking and fracture mechanics research
+- Composite material behaviour modelling
+- Progressive collapse and failure mechanism studies
+- Benchmark studies comparing FEA results with experimental data
+- Seismic performance research on new structural systems
+- FRP strengthening analysis and bond-slip modelling
+
+CRITICAL — FEA NX TARGET COMPANIES (often missed):
+- University civil/structural engineering departments (research licences)
+- R&D departments within large engineering firms
+- Structural forensic investigation firms (failure analysis, accident reconstruction)
+- Testing laboratories that need FEM to correlate with physical test results
+- Specialist consultancies doing unusual/non-standard structural analysis
+- Firms doing structural health monitoring that need FEM baseline models
+- Companies developing new construction products (need FEA validation)
+
+FEA NX COMPETITIVE POSITIONING:
+- vs ANSYS/ABAQUS → More accessible for civil engineers, civil-specific material models and workflows, lower cost for civil applications
+- vs DIANA → Comparable nonlinear capabilities, better integration with MIDAS ecosystem
+- vs ATENA → Competitive for concrete analysis, broader capability range
+- vs LS-DYNA → More suitable for quasi-static civil problems vs crash/impact dynamics
+
+VALUE PROPOSITION: High accuracy for complex local analysis that global tools cannot handle. Seamless integration with CIVIL NX and GEN NX. Also a standalone research-grade FEM platform for universities and R&D.
+POSITIONING: Detailed local analysis tool — pairs with CIVIL NX or GEN NX for commercial work. Standalone research FEM platform for academic and R&D users.
 
 ════════════════════════════════════════════════
 4. MIDAS GTS NX — Geotechnical Analysis
@@ -1271,6 +744,27 @@ TYPICAL USE CASES:
 - Slope stability — landslides and open pit mining
 - Dam engineering and seepage analysis
 - Soil-structure interaction for buildings and bridges
+- Embankment design and ground improvement modelling
+- Landfill engineering and environmental geotechnics
+- Consolidation and settlement analysis
+
+CRITICAL — GTS NX TARGET COMPANIES (often missed):
+- Geotechnical investigation/research firms (soil testing, borehole analysis, geomechanics labs)
+- Ground engineering consultancies
+- Geotechnical design firms (foundations, retaining walls, piling)
+- Tunnelling and underground construction firms
+- Mining and quarry engineering
+- Dam and reservoir engineers
+- Slope stability and landslide assessment firms
+- Environmental geotechnics (landfill, contamination modelling)
+- Firms doing CPT, SPT, triaxial testing, plate load tests — they need GTS NX to model results
+- Any firm producing geotechnical elaborates, soil investigation reports, or foundation recommendations
+
+GTS NX COMPETITIVE POSITIONING:
+- vs PLAXIS → Better BIM integration, better mesh generation, more intuitive UI, better value
+- vs GeoStudio/SLOPE/W → Full 3D FEA vs simplified 2D limit equilibrium
+- vs FLAC/UDEC → More accessible for consulting engineers, faster model setup
+- vs manual/spreadsheet calculations → Automated FEA replaces conservative hand calculations
 
 VALUE PROPOSITION: Accurate soil and rock modelling + advanced geotechnical capabilities + full ground engineering coverage.
 POSITIONING: Essential for any firm doing geotechnical, tunnelling, underground, or foundation work.
@@ -1280,11 +774,17 @@ CROSS-SELL LOGIC — MATCH TO COMPANY TYPE
 ════════════════════════════════════════════════
 - Bridge/infrastructure firm → CIVIL NX (primary) + FEA NX (local detailing)
 - Building/structural firm → GEN NX (primary) + FEA NX (connection design)
-- Geotechnical/ground firm → GTS NX (primary) + CIVIL NX (structure interaction)
+- Geotechnical/ground engineering firm → GTS NX (primary) + CIVIL NX (structure interaction)
+- Geotech investigation/research firm → GTS NX (they model soil behaviour from their test data)
+- Piling/foundation specialist → GTS NX + CIVIL NX (soil-structure interaction)
 - Mixed civil firm (bridges + buildings) → CIVIL NX + GEN NX + FEA NX
 - Full service firm (all disciplines) → Full suite: CIVIL NX + GEN NX + FEA NX + GTS NX
 - Metro/tunnelling firm → GTS NX + CIVIL NX
+- Dam/embankment firm → GTS NX + CIVIL NX
 - Consulting/advisory firm → Start with CIVIL NX or GEN NX depending on focus
+- University/research institution → FEA NX (research licence) + relevant NX product for teaching
+- Structural forensic/testing lab → FEA NX (failure analysis, test correlation)
+- R&D department → FEA NX (validation, parametric studies)
 
 ════════════════════════════════════════════════
 COMPETITIVE POSITIONING
@@ -1292,45 +792,302 @@ COMPETITIVE POSITIONING
 - vs LUSAS/STAAD/SAP2000 → MIDAS offers better automation, modern UI, and construction stage analysis
 - vs PLAXIS → GTS NX is directly competitive, with better BIM integration and CAD workflow
 - vs ETABS → GEN NX offers more automation and parametric design capabilities
-- vs ANSYS/ABAQUS → FEA NX is more accessible for civil engineers with civil-specific workflows
+- vs ANSYS/ABAQUS → FEA NX is more accessible for civil engineers with civil-specific workflows and lower cost
+- vs DIANA/ATENA → FEA NX is competitive for nonlinear concrete analysis with better ecosystem integration
+- vs GeoStudio → GTS NX offers full 3D FEA vs simplified 2D methods
 - No existing FEA software detected → Clean opportunity, position as first professional FEA platform
 
 ════════════════════════════════════════════════
 ONE-LINE MASTER PITCH
 ════════════════════════════════════════════════
-MIDAS NX Suite provides a complete structural and geotechnical engineering ecosystem — from global bridge and building design to detailed local analysis and ground engineering — all within one integrated, automated workflow.
+MIDAS NX Suite provides a complete structural and geotechnical engineering ecosystem — from global bridge and building design to detailed local analysis, ground engineering, and research-grade FEM — all within one integrated, automated workflow.
 """
 
 
 def analyze_sales(corpus, company_json):
-    return ask_deepseek(
-        f"You are a senior B2B sales strategist for MIDAS IT. Use the product knowledge below to make specific product recommendations. Be specific and actionable. Respond in pure JSON, no markdown. Always respond in English regardless of the language of the website content.\n\n{MIDAS_PRODUCTS}",
-        f"""Return ONLY valid JSON:
+    """Two-phase: DeepSeek provides strategy + factual signals, Python calculates score."""
+    raw = ask_deepseek(
+        f"You are a senior B2B sales strategist for MIDAS IT. Use the product knowledge below. Be specific and actionable. Respond in pure JSON, no markdown. Always respond in English.\n\n{MIDAS_PRODUCTS}",
+        f"""Return ONLY valid JSON with sales strategy AND factual scoring signals.
+
 {{
-  "fem_opportunities": ["detailed specific use case 1 referencing their actual project types", "use case 2", "use case 3"],
-  "pain_points": ["specific pain point based on their work", "pain 2", "pain 3"],
-  "entry_point": "Specific person name and role to approach first, with detailed reasoning based on their seniority and relevance to FEA/FEM",
-  "value_positioning": "Detailed 2-3 sentence positioning of MIDAS specifically for this company's project types and engineering focus",
-  "likely_objections": ["specific objection based on their context", "objection 2", "objection 3"],
-  "hiring_signals": ["specific signal from their job postings or growth", "signal 2"],
+  "fem_opportunities": ["detailed specific use case 1", "use case 2", "use case 3"],
+  "pain_points": ["specific pain point", "pain 2", "pain 3"],
+  "entry_point": "Specific person name and role to approach first, with reasoning",
+  "value_positioning": "2-3 sentence positioning of MIDAS for this company",
+  "likely_objections": ["specific objection", "objection 2", "objection 3"],
+  "hiring_signals": ["specific signal", "signal 2"],
   "expansion_signals": ["specific expansion signal", "signal 2"],
-  "pre_meeting_mention": ["specific thing to mention about their actual projects", "thing 2", "thing 3"],
-  "smart_questions": ["specific question about their workflow or current tools", "question 2", "question 3"],
-  "opening_line": "One strong personalised opening line referencing something specific about their work",
-  "overall_score": "Hot|Warm|Cold",
-  "score_reason": "2-3 sentence detailed reason for the score based on their specific context",
-  "recommended_products": ["list the specific MIDAS products that fit this company from: CIVIL NX, GEN NX, FEA NX, GTS NX"],
-  "product_reason": "3-4 sentence explanation of exactly why these specific MIDAS products fit this company based on their project types and engineering capabilities"
+  "pre_meeting_mention": ["specific thing about their projects", "thing 2", "thing 3"],
+  "smart_questions": ["specific question about their workflow", "question 2", "question 3"],
+  "opening_line": "One strong personalised opening line",
+  "recommended_products": ["only from: CIVIL NX, GEN NX, FEA NX, GTS NX"],
+  "product_reason": "3-4 sentence explanation of why these products fit",
+
+  "signals": {{
+    "core_service": "structural_only|geotech_only|structural_and_geotech|multi_discipline_with_structural|civil_no_structural|not_engineering",
+    "project_complexity": "complex|moderate|simple|none",
+    "fem_evidence": "explicit_fem_mentioned|likely_fem_from_projects|possible_fem|no_fem",
+    "competitor_software": "none_detected|basic_tools_only|competitor_detected|locked_in",
+    "competitor_names": ["list any FEA/structural software mentioned"],
+    "company_size": "micro_1_10|small_11_50|medium_51_200|large_201_plus|unknown",
+    "people_found_count": 0,
+    "decision_makers_found": true,
+    "hiring_structural": false,
+    "hiring_any": false,
+    "recent_project_wins": false,
+    "expanding_offices": false,
+    "is_government_body": false,
+    "is_university": false,
+    "project_count_on_site": 0,
+    "has_bridges": false,
+    "has_buildings": false,
+    "has_geotech": false,
+    "has_tunnels": false,
+    "has_foundations": false,
+    "has_dams": false,
+    "has_marine": false
+  }}
 }}
+
+For signals: answer each field based ONLY on evidence from the data. If unsure, pick the conservative option. Do not guess or inflate.
+
 Company data: {company_json}
 Website excerpt: {corpus[:4000]}""",
         max_tokens=4000
     )
 
+    sales_data = safe_json(raw)
+    sig = sales_data.get("signals", {})
 
-def generate_email(company_data, sales_data):
+    # Repair conservative/incorrect LLM scoring signals with facts already extracted
+    # from the company profile. The LLM is useful for strategy text, but it can miss
+    # obvious FEM relevance in projects and then mark strong engineering firms cold.
+    company_data = safe_json(company_json) if isinstance(company_json, str) else (company_json or {})
+    if not isinstance(company_data, dict):
+        company_data = {}
+
+    def as_list(value):
+        if isinstance(value, list):
+            return value
+        if value in (None, ""):
+            return []
+        return [value]
+
+    def text_join(*values):
+        parts = []
+        for value in values:
+            if isinstance(value, dict):
+                parts.extend(str(v) for v in value.values() if v)
+            elif isinstance(value, list):
+                parts.extend(text_join(v) for v in value)
+            elif value:
+                parts.append(str(value))
+        return " ".join(parts).lower()
+
+    projects = [p for p in as_list(company_data.get("projects")) if isinstance(p, dict)]
+    project_types = [str(t).lower() for t in as_list(company_data.get("project_types"))]
+    software = [str(s).strip() for s in as_list(company_data.get("software_mentioned")) if str(s).strip()]
+    company_blob = text_join(
+        company_data.get("tagline"),
+        company_data.get("overview"),
+        company_data.get("engineering_capabilities"),
+        company_data.get("project_types"),
+        projects,
+        company_data.get("open_roles"),
+        corpus[:8000],
+    )
+
+    def has_any(terms, blob=company_blob):
+        return any(term in blob for term in terms)
+
+    bridge_terms = ("bridge", "viaduct", "flyover", "highway", "railway", "rail", "transport infrastructure")
+    building_terms = ("building", "residential", "commercial", "mixed-use", "mixed use", "high-rise", "housing")
+    geotech_terms = ("geotechnical", "ground engineering", "soil", "slope", "retaining", "basement", "excavation", "earthworks")
+    tunnel_terms = ("tunnel", "tunnelling", "underground", "metro")
+    foundation_terms = ("foundation", "piling", "pile", "underpinning")
+    dam_terms = ("dam", "reservoir", "embankment")
+    marine_terms = ("marine", "coastal", "harbour", "port", "quay")
+    structural_terms = (
+        "structural engineer", "structural engineering", "structural design",
+        "civil engineer", "civil engineering", "temporary works", "steelwork",
+        "reinforced concrete", "rc frame", "frame design", "facade engineering",
+    )
+    non_engineering_terms = ("marketing agency", "law firm", "accountancy", "restaurant", "retail shop")
+
+    type_blob = " ".join(project_types)
+    has_bridges = has_any(bridge_terms) or "bridge" in type_blob
+    has_buildings = has_any(building_terms) or any(t in type_blob for t in ("building", "residential", "industrial"))
+    has_geotech = has_any(geotech_terms) or "geotechnical" in type_blob
+    has_tunnels = has_any(tunnel_terms) or "tunnel" in type_blob
+    has_foundations = has_any(foundation_terms) or "foundation" in type_blob
+    has_dams = has_any(dam_terms) or "dam" in type_blob
+    has_marine = has_any(marine_terms)
+
+    detected_flags = {
+        "has_bridges": has_bridges,
+        "has_buildings": has_buildings,
+        "has_geotech": has_geotech,
+        "has_tunnels": has_tunnels,
+        "has_foundations": has_foundations,
+        "has_dams": has_dams,
+        "has_marine": has_marine,
+    }
+    for key, detected in detected_flags.items():
+        if detected:
+            sig[key] = True
+
+    fem_project_count = sum(1 for p in projects if p.get("fem_relevant"))
+    engineering_project_count = sum(1 for detected in detected_flags.values() if detected)
+    if projects and not sig.get("project_count_on_site"):
+        sig["project_count_on_site"] = len(projects)
+
+    explicit_fem_terms = (
+        "fea", "fem", "finite element", "finite-element", "analysis model",
+        "nonlinear", "non-linear", "seismic", "dynamic analysis", "structural analysis",
+        "soil analysis", "slope stability", "construction stage", "load analysis",
+    )
+    fem_from_text = has_any(explicit_fem_terms)
+    complex_terms = (
+        "bridge", "tunnel", "geotechnical", "foundation", "retaining", "dam",
+        "seismic", "nonlinear", "non-linear", "temporary works", "rail",
+        "metro", "underground", "high-rise", "deep excavation",
+    )
+
+    if fem_from_text:
+        sig["fem_evidence"] = "explicit_fem_mentioned"
+    elif fem_project_count or has_bridges or has_geotech or has_tunnels or has_foundations or has_dams:
+        if sig.get("fem_evidence") in (None, "", "no_fem", "possible_fem"):
+            sig["fem_evidence"] = "likely_fem_from_projects"
+    elif engineering_project_count or has_any(structural_terms):
+        if sig.get("fem_evidence") in (None, "", "no_fem"):
+            sig["fem_evidence"] = "possible_fem"
+
+    if has_any(complex_terms) or fem_project_count:
+        if sig.get("project_complexity") in (None, "", "none", "simple"):
+            sig["project_complexity"] = "complex"
+    elif engineering_project_count and sig.get("project_complexity") in (None, "", "none"):
+        sig["project_complexity"] = "moderate"
+
+    if (has_geotech or has_tunnels or has_foundations or has_dams) and (has_bridges or has_buildings or has_any(structural_terms)):
+        sig["core_service"] = "structural_and_geotech"
+    elif has_geotech or has_tunnels or has_foundations or has_dams:
+        if sig.get("core_service") in (None, "", "not_engineering", "civil_no_structural"):
+            sig["core_service"] = "geotech_only"
+    elif has_bridges or has_buildings or has_any(structural_terms):
+        if sig.get("core_service") in (None, "", "not_engineering", "civil_no_structural"):
+            sig["core_service"] = "structural_only"
+    elif has_any(("civil engineering", "infrastructure", "engineering consultancy")) and not has_any(non_engineering_terms):
+        if sig.get("core_service") in (None, "", "not_engineering"):
+            sig["core_service"] = "multi_discipline_with_structural"
+
+    if software:
+        lower_sw = " ".join(software).lower()
+        competitor_terms = ("etabs", "sap2000", "staad", "tekla", "robot", "plaxis", "lusas", "ansys", "abaqus", "diana", "atena", "sofistik")
+        basic_terms = ("autocad", "revit", "civil 3d", "civils 3d", "navisworks", "bim")
+        if any(term in lower_sw for term in competitor_terms):
+            sig["competitor_software"] = "competitor_detected"
+        elif any(term in lower_sw for term in basic_terms) and sig.get("competitor_software") in (None, "", "none_detected"):
+            sig["competitor_software"] = "basic_tools_only"
+
+    people = as_list(company_data.get("people"))
+    if people and not sig.get("people_found_count"):
+        sig["people_found_count"] = len(people)
+    if people and not sig.get("decision_makers_found"):
+        decision_terms = ("owner", "founder", "director", "principal", "partner", "associate")
+        sig["decision_makers_found"] = any(
+            any(term in str(p.get("tier", "") + " " + p.get("role", "")).lower() for term in decision_terms)
+            for p in people if isinstance(p, dict)
+        )
+
+    if sig.get("company_size") in (None, "", "unknown"):
+        emp_text = str(company_data.get("employee_count") or "").lower()
+        nums = [int(n.replace(",", "")) for n in re.findall(r"\d[\d,]*", emp_text)]
+        emp_n = nums[0] if nums else len(people)
+        if emp_n:
+            if emp_n <= 10:
+                sig["company_size"] = "micro_1_10"
+            elif emp_n <= 50:
+                sig["company_size"] = "small_11_50"
+            elif emp_n <= 200:
+                sig["company_size"] = "medium_51_200"
+            else:
+                sig["company_size"] = "large_201_plus"
+
+    # ══ DETERMINISTIC SCORING — Python calculates, LLM only provides facts ══
+
+    # Category 1: Structural/Geotech Relevance (0-30)
+    core = sig.get("core_service", "not_engineering")
+    rel_base = {"structural_and_geotech": 28, "structural_only": 26, "geotech_only": 25,
+                "multi_discipline_with_structural": 18, "civil_no_structural": 7, "not_engineering": 1}
+    rel = rel_base.get(core, 4)
+    proj_flags = [sig.get(k, False) for k in ("has_bridges","has_buildings","has_geotech","has_tunnels","has_foundations","has_dams","has_marine")]
+    rel = min(30, rel + sum(proj_flags))
+
+    # Category 2: FEM/FEA Need (0-25)
+    fem_ev = sig.get("fem_evidence", "no_fem")
+    fem_base = {"explicit_fem_mentioned": 22, "likely_fem_from_projects": 16, "possible_fem": 9, "no_fem": 1}
+    fem = fem_base.get(fem_ev, 4)
+    fem = min(25, fem + {"complex": 3, "moderate": 1, "simple": 0, "none": 0}.get(sig.get("project_complexity", "none"), 0))
+
+    # Category 3: Buying Signals (0-20)
+    buy = 3
+    if sig.get("hiring_structural"): buy += 5
+    elif sig.get("hiring_any"): buy += 2
+    if sig.get("recent_project_wins"): buy += 4
+    if sig.get("expanding_offices"): buy += 3
+    pc = sig.get("project_count_on_site", 0) or 0
+    if pc > 20: buy += 4
+    elif pc > 10: buy += 3
+    elif pc > 5: buy += 2
+    elif pc > 0: buy += 1
+    buy = min(20, buy)
+
+    # Category 4: Accessibility (0-15)
+    acc = 3
+    ppl = sig.get("people_found_count", 0) or 0
+    if ppl >= 10: acc += 3
+    elif ppl >= 5: acc += 4
+    elif ppl >= 2: acc += 5
+    elif ppl >= 1: acc += 3
+    if sig.get("decision_makers_found"): acc += 3
+    sz = sig.get("company_size", "unknown")
+    if sz in ("micro_1_10", "small_11_50"): acc += 2
+    elif sz == "large_201_plus": acc -= 2
+    if sig.get("is_government_body"): acc -= 4
+    if sig.get("is_university"): acc += 1
+    acc = max(0, min(15, acc))
+
+    # Category 5: Competitive Landscape (0-10)
+    cmp = {"none_detected": 9, "basic_tools_only": 6, "competitor_detected": 3, "locked_in": 1}.get(sig.get("competitor_software", "none_detected"), 5)
+
+    # Total
+    lead_score = max(0, min(100, rel + fem + buy + acc + cmp))
+    overall = "Hot" if lead_score >= 70 else ("Warm" if lead_score >= 40 else "Cold")
+
+    # Build breakdown
+    sales_data["lead_score"] = lead_score
+    sales_data["score_breakdown"] = {
+        "structural_relevance": {"score": rel, "reason": f"Core: {core.replace('_',' ')}, {sum(proj_flags)} project type(s)"},
+        "fem_need": {"score": fem, "reason": f"FEM evidence: {fem_ev.replace('_',' ')}, complexity: {sig.get('project_complexity','unknown')}"},
+        "buying_signals": {"score": buy, "reason": f"Hiring structural: {sig.get('hiring_structural',False)}, projects: {pc}, expanding: {sig.get('expanding_offices',False)}"},
+        "accessibility": {"score": acc, "reason": f"{ppl} people, decision makers: {sig.get('decision_makers_found',False)}, size: {sz.replace('_',' ')}"},
+        "competitive_landscape": {"score": cmp, "reason": f"Software: {sig.get('competitor_software','unknown').replace('_',' ')}" + (f" ({', '.join(sig.get('competitor_names',[]))})" if sig.get('competitor_names') else "")}
+    }
+    sales_data["overall_score"] = overall
+    sales_data["score_reason"] = f"Score {lead_score}/100 ({overall}). Core: {core.replace('_',' ')}, FEM: {fem_ev.replace('_',' ')}, {ppl} people, software: {sig.get('competitor_software','unknown').replace('_',' ')}."
+
+    if lead_score < 30:
+        sales_data["recommended_products"] = []
+        sales_data["fem_opportunities"] = ["No direct FEM/FEA opportunities identified"]
+
+    sales_data.pop("signals", None)
+    return json.dumps(sales_data)
+
+
+def generate_email_text(company_data, sales_data):
     return ask_deepseek(
-        "You are a B2B sales expert writing cold outreach emails for MIDAS IT (FEA/FEM structural analysis software). Write natural, human-sounding emails — not corporate fluff.",
+        "You are a B2B sales expert writing cold outreach emails for MIDAS IT (FEA/FEM structural analysis software). Write natural, human-sounding emails.",
         f"""Write a cold outreach email to a key contact at this engineering company.
 
 Company: {company_data.get('company_name', '')}
@@ -1343,10 +1100,8 @@ Pre-meeting mentions: {', '.join(sales_data.get('pre_meeting_mention', [])[:2])}
 Requirements:
 - Subject line first (prefix with "Subject: ")
 - 4-5 short paragraphs
-- Mention something specific about their work
-- One clear call to action (30-45- online meeting)
+- One clear call to action (15-min call)
 - Professional but conversational tone
-- No generic opener like "I hope this email finds you well"
 - Sign off as the MIDAS IT team
 
 Return plain text only.""",
@@ -1355,38 +1110,475 @@ Return plain text only.""",
     )
 
 
-# ── HELPERS ───────────────────────────────────────────────────────────────────
-def safe_json(text):
+# ── ENRICHMENT LOOKUPS ───────────────────────────────────────────────────────
+
+def search_people_via_serpapi(company_name, domain):
     try:
-        cleaned = re.sub(r"```json|```", "", text).strip()
-        return json.loads(cleaned)
+        all_text = ""
+        queries = [
+            f"site:{domain} (team OR people OR staff OR leadership OR directors)",
+            f'site:linkedin.com/in "{company_name}" (engineer OR structural OR civil)',
+            f'site:linkedin.com/in "{company_name}" (director OR principal OR associate)',
+            f'"{company_name}" (ANSYS OR ABAQUS OR SAP2000 OR ETABS OR STAAD OR LUSAS OR MIDAS)',
+            f'"{company_name}" (hiring OR careers OR jobs) (structural OR civil)',
+            f'"{company_name}" (project OR bridge OR infrastructure) (engineering OR structural)'
+        ]
+        for q in queries:
+            results = serpapi_search(q, num_results=8)
+            all_text += "\n\n" + format_serpapi_results(results, max_chars=1500)
+        return all_text[:8000]
     except:
+        return ""
+
+
+def lookup_companies_house(company_name, locations=None):
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        }
+
+        uk_keywords = ["london","manchester","birmingham","leeds","bristol","edinburgh",
+                        "glasgow","liverpool","uk","england","scotland","wales","united kingdom","britain"]
+        eu_keywords = ["germany","berlin","munich","france","paris","netherlands","amsterdam",
+                        "belgium","brussels","switzerland","zurich","austria","vienna",
+                        "ireland","dublin","spain","madrid","barcelona","italy","rome","milan",
+                        "poland","warsaw","czech","prague","sweden","stockholm","norway","oslo",
+                        "denmark","copenhagen","finland","helsinki","romania","bucharest",
+                        "hungary","budapest","portugal","lisbon","greece","athens"]
+
+        location_str = " ".join(locations or []).lower()
+        is_uk = any(kw in location_str for kw in uk_keywords)
+        is_eu = any(kw in location_str for kw in eu_keywords)
+
+        all_text = ""
+        director_count = 0
+
+        # UK — Companies House API
+        if is_uk or (not is_uk and not is_eu):
+            if COMPANIES_HOUSE_KEY:
+                try:
+                    search_resp = http.get(
+                        f"https://api.company-information.service.gov.uk/search/companies?q={company_name.replace(' ', '+')}",
+                        auth=(COMPANIES_HOUSE_KEY, ""), timeout=10
+                    )
+                    results = search_resp.json().get("items", [])
+                    if results:
+                        company_number = results[0].get("company_number", "")
+                        officers_resp = http.get(
+                            f"https://api.company-information.service.gov.uk/company/{company_number}/officers",
+                            auth=(COMPANIES_HOUSE_KEY, ""), timeout=10
+                        )
+                        officers = officers_resp.json().get("items", [])
+                        officer_text = "\n".join([
+                            f"{o.get('name','')} — {o.get('officer_role','')} (appointed {o.get('appointed_on','')})"
+                            for o in officers if o.get('resigned_on') is None
+                        ])
+                        company_info = results[0]
+                        text = f"""Company: {company_info.get('title','')}
+Status: {company_info.get('company_status','')}
+Incorporated: {company_info.get('date_of_creation','')}
+
+Active Officers:
+{officer_text}"""
+                        director_count = len([o for o in officers if 'director' in o.get('officer_role','').lower()])
+                        all_text += f"[Companies House UK]\n{text}"
+                except:
+                    pass
+
+        # EU — OpenCorporates
+        if is_eu or (not is_uk and not is_eu):
+            try:
+                oc_url = f"https://opencorporates.com/companies?q={company_name.replace(' ', '+')}"
+                resp = http.get(oc_url, headers=headers, timeout=10)
+                soup = BeautifulSoup(resp.text, "html.parser")
+                result = soup.find("a", class_="company_search_result")
+                if result:
+                    company_url = "https://opencorporates.com" + result["href"]
+                    resp2 = http.get(company_url, headers=headers, timeout=10)
+                    soup2 = BeautifulSoup(resp2.text, "html.parser")
+                    text = soup2.get_text(separator="\n", strip=True)
+                    director_count += text.lower().count("director")
+                    all_text += f"\n\n[OpenCorporates EU]\n{text[:3000]}"
+            except:
+                pass
+
+        # EU Tenders — TED
         try:
-            match = re.search(r'\{.*\}', text, re.DOTALL)
-            if match:
-                return json.loads(match.group())
+            ted_url = f"https://ted.europa.eu/en/search?scope=NOTICE&query={company_name.replace(' ', '+')}"
+            resp = http.get(ted_url, headers=headers, timeout=10)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for tag in soup(["script", "style"]):
+                tag.decompose()
+            text = soup.get_text(separator="\n", strip=True)
+            if len(text) > 200:
+                all_text += f"\n\n[EU Tenders TED]\n{text[:2000]}"
         except:
             pass
-        return {}
 
-def ini(name):
-    return "".join(p[0] for p in name.split()[:2]).upper()
+        return all_text[:6000], director_count
+    except:
+        return "", 0
 
-def li_url(name):
-    return f"https://www.linkedin.com/search/results/people/?keywords={name.replace(' ','%20')}"
 
-def score_cls(s):
-    return {"Hot": "score-hot", "Warm": "score-warm", "Cold": "score-cold"}.get(s, "score-cold")
+def lookup_linkedin_company(company_name, domain=""):
+    try:
+        results = []
+        queries = [
+            f'site:linkedin.com/company "{company_name}"',
+            f'linkedin.com "{company_name}" "{domain}"',
+        ]
+        for query in queries:
+            results.extend(serpapi_search(query, num_results=6))
 
-def score_emoji(s):
-    return {"Hot": "🔥", "Warm": "⚡", "Cold": "❄️"}.get(s, "")
+        text = format_serpapi_results(results, max_chars=5000)
 
-def extract_domain(url):
-    from urllib.parse import urlparse
-    return urlparse(url).netloc.replace("www.", "")
+        # Smart employee extraction:
+        # 1. First try to find a LinkedIn result that mentions the domain — that's the right company
+        # 2. If no domain match, look for results with the EXACT company name in the link/title
+        # 3. If multiple employee counts found, prefer the smallest (small firms get drowned by big ones)
+        employee_signal = ""
+
+        # Pass 1: results that contain the domain — strongest signal
+        domain_short = domain.replace(".co.uk", "").replace(".com", "").replace(".org", "")
+        for r in results:
+            r_text = f"{r.get('title','')} {r.get('snippet','')} {r.get('link','')}".lower()
+            if domain in r_text or (domain_short and domain_short in r_text):
+                emp = extract_employee_count_from_text(r_text)
+                if emp:
+                    employee_signal = emp
+                    break
+
+        # Pass 2: if no domain-matched result, look for the LinkedIn company page specifically
+        if not employee_signal:
+            for r in results:
+                link = r.get("link", "").lower()
+                # Only trust linkedin.com/company/ pages, not random mentions
+                if "linkedin.com/company/" in link:
+                    snippet = r.get("snippet", "")
+                    emp = extract_employee_count_from_text(snippet)
+                    if emp:
+                        # Sanity check: if the website we crawled only has a few pages of content
+                        # and the LinkedIn says 1000+ employees, it's probably the wrong company
+                        employee_signal = emp
+                        break
+
+        return text, employee_signal
+    except:
+        return "", ""
+
+
+def lookup_glassdoor(company_name, domain):
+    try:
+        # Include domain to anchor to the right company
+        domain_short = domain.replace(".co.uk", "").replace(".com", "").replace(".org", "")
+        all_text = format_serpapi_results(
+            serpapi_search(f'glassdoor "{company_name}" {domain_short} reviews', num_results=10),
+            max_chars=2000
+        )
+        all_text += "\n\n" + format_serpapi_results(
+            serpapi_search(f'"{company_name}" {domain_short} employees size', num_results=10),
+            max_chars=2000
+        )
+
+        # Fallback without domain if nothing found
+        if len(all_text.strip()) < 100:
+            all_text = format_serpapi_results(
+                serpapi_search(f'glassdoor "{company_name}" reviews engineers', num_results=10),
+                max_chars=2000
+            )
+            all_text += "\n\n" + format_serpapi_results(
+                serpapi_search(f'"{company_name}" employees size glassdoor linkedin indeed', num_results=10),
+                max_chars=2000
+            )
+
+        return all_text[:5000], all_text.lower().count("glassdoor")
+    except:
+        return "", 0
+
+
+def lookup_planning_portal(company_name):
+    try:
+        text = format_serpapi_results(
+            serpapi_search(f'"{company_name}" planning application structural engineer', num_results=10),
+            max_chars=3000
+        )
+        return text, text.lower().count("planning")
+    except:
+        return "", 0
+
+
+# ── FAST SUPPLEMENT ANALYSIS (replaces full re-analysis) ─────────
+
+def analyze_supplement(extra_corpus, existing_people_count, existing_projects_count):
+    """Small targeted AI call — only extracts people/projects from enrichment sources.
+    Much faster than re-running the full analyze_company on the entire corpus."""
+    if not extra_corpus.strip():
+        return "{}"
+    return ask_deepseek(
+        "You are a B2B sales analyst. Extract ONLY new people and projects from these supplementary sources. Respond in pure JSON, no markdown. Keep names exactly as written.",
+        f"""These are supplementary data sources (LinkedIn, Companies House, Glassdoor, planning records).
+I already have {existing_people_count} people and {existing_projects_count} projects from the main website.
+Extract ONLY additional people and projects NOT already covered.
+
+Return ONLY valid JSON:
+{{
+  "people": [{{"name": "Full Name", "role": "Job Title", "tier": "Owner|Founder|Director|Principal|Senior|Engineer|Graduate|Technician|Other"}}],
+  "projects": [{{"name": "Project name", "type": "Bridge|Building|Metro|Infrastructure|Residential|Industrial|Geotechnical|Tunnel|Foundation|Slope|Dam|Retaining Wall|Other", "location": "City or null", "client": "Client name or null", "description": "One sentence summary", "fem_relevant": true}}],
+  "locations": ["additional office cities found"],
+  "founded": "year if found, else null",
+  "employee_count": "string if found, else null"
+}}
+
+Supplementary sources:
+{extra_corpus[:12000]}""",
+        max_tokens=4000
+    )
+
+
+def quick_extract_company_name(pages, domain):
+    """Fast extraction of company name from page title/content without AI.
+    Used to start enrichment lookups immediately while AI analysis runs."""
+    for p in pages[:3]:
+        md = p.get("markdown", "")
+        # Try first heading
+        for line in md.split("\n")[:20]:
+            line = line.strip().strip("#").strip()
+            if 10 < len(line) < 80 and not line.startswith("[") and not line.startswith("http"):
+                # Clean up common suffixes
+                for suffix in [" - Home", " | Home", " – Home", " - Welcome", " | Welcome"]:
+                    if line.endswith(suffix):
+                        line = line[:-len(suffix)].strip()
+                if line:
+                    return line
+    # Fallback: capitalize the domain name
+    name = domain.split(".")[0].replace("-", " ").replace("_", " ")
+    return name.title()
+
+
+# ── FULL ANALYSIS PIPELINE ───────────────────────────────────────────────────
+
+def analyse_single_url(website_url, firecrawl_key, status_callback=None):
+    """Run full analysis pipeline for one URL. Returns (entry_dict, error_str).
+    
+    Optimised pipeline (parallel where possible):
+      1. Crawl website
+      2. IN PARALLEL: AI analysis + enrichment lookups (enrichment uses quick name extraction)
+      3. Small supplement AI call for enrichment gaps (NOT a full re-analysis)
+      4. Sales strategy AI call
+    """
+    try:
+        if not website_url.startswith("http"):
+            website_url = "https://" + website_url
+
+        _domain = extract_domain(website_url)
+
+        if status_callback:
+            status_callback("crawling", f"Crawling {_domain}...", 5)
+
+        # ── STEP 1: Crawl ──
+        pages = firecrawl_crawl(website_url, firecrawl_key, status_callback=status_callback)
+
+        def _is_thin(pl):
+            if not pl: return True
+            if all(len(p.get("markdown","")) < 500 for p in pl): return True
+            if len([p for p in pl if len(p.get("markdown","")) > 500]) < 3: return True
+            return False
+
+        if _is_thin(pages):
+            if status_callback:
+                status_callback("crawling", f"Trying ScrapingBee for {_domain}...", 10)
+            sb_pages = scrape_with_scrapingbee(website_url)
+            if sb_pages and any(len(p.get("markdown","")) > 500 for p in sb_pages):
+                pages = sb_pages
+            elif _is_thin(pages):
+                if status_callback:
+                    status_callback("crawling", f"Trying direct fetch for {_domain}...", 15)
+                direct_pages = direct_fetch(website_url)
+                if direct_pages and any(len(p.get("markdown","")) > 500 for p in direct_pages):
+                    pages = direct_pages
+                elif _is_thin(pages):
+                    if status_callback:
+                        status_callback("crawling", f"Trying SerpAPI for {_domain}...", 20)
+                    serp_pages = fetch_serpapi_site_results(website_url)
+                    if serp_pages:
+                        pages = serp_pages
+
+        if not pages:
+            return None, f"Could not extract content from {_domain}"
+
+        if status_callback:
+            status_callback("analysing", f"Analysing {_domain}...", 30)
+
+        # ── STEP 2: AI analysis + enrichment IN PARALLEL ──
+        corpus = build_corpus(pages)
+        _quick_name = quick_extract_company_name(pages, _domain)
+
+        # Start enrichment lookups immediately using quick name (don't wait for DeepSeek)
+        lookup_jobs = {
+            "company_registry": (lookup_companies_house, (_quick_name,), {"locations": []}),
+            "linkedin": (lookup_linkedin_company, (_quick_name,), {"domain": _domain}),
+            "reviews": (lookup_glassdoor, (_quick_name, _domain), {}),
+            "planning": (lookup_planning_portal, (_quick_name,), {}),
+        }
+
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            # Submit enrichment lookups
+            enrichment_futures = {
+                executor.submit(func, *args, **kwargs): name
+                for name, (func, args, kwargs) in lookup_jobs.items()
+            }
+
+            # Submit AI analysis in the SAME pool — runs concurrently with enrichment
+            ai_future = executor.submit(analyze_company, corpus)
+
+            # Collect enrichment results as they complete
+            _lookup_results = {}
+            for future in as_completed(enrichment_futures):
+                name = enrichment_futures[future]
+                try:
+                    _lookup_results[name] = future.result()
+                except:
+                    _lookup_results[name] = ("", 0)
+
+            # Get AI result (may already be done by now)
+            company_raw = ai_future.result()
+
+        _company_data = safe_json(company_raw)
+
+        if status_callback:
+            status_callback("enriching", f"Merging enrichment data...", 60)
+
+        # ── STEP 3: Merge enrichment + targeted supplement ──
+        _extra_corpus = ""
+
+        ch_text, ch_dirs = _lookup_results.get("company_registry", ("", 0))
+        if ch_text:
+            _extra_corpus += f"\n\n[SOURCE: Company Registry]\n{ch_text}"
+
+        _emp_from_structured = False
+
+        li_text, li_emp = _lookup_results.get("linkedin", ("", ""))
+        if li_text:
+            _extra_corpus += f"\n\n[SOURCE: LinkedIn]\n{li_text}"
+            if li_emp:
+                _company_data["employee_count"] = li_emp
+                _emp_from_structured = True
+
+        gd_text, gd_rev = _lookup_results.get("reviews", ("", 0))
+        gd_emp = extract_employee_count_from_text(gd_text)
+        if gd_text:
+            _extra_corpus += f"\n\n[SOURCE: Glassdoor & Indeed]\n{gd_text}"
+        if gd_emp and not _emp_from_structured:
+            _company_data["employee_count"] = gd_emp
+            _emp_from_structured = True
+
+        # Sanity check: if the website only has a handful of people listed
+        # but the employee count says 500+, it's almost certainly a wrong-company match.
+        # Small engineering consultancies don't have 500+ staff with only 3-5 people on their site.
+        if _emp_from_structured:
+            people_on_site = len(_company_data.get("people", []))
+            emp_str = _company_data.get("employee_count", "")
+            # Extract the first number from the employee string for comparison
+            emp_nums = re.findall(r'[\d,]+', emp_str.replace(",", ""))
+            first_num = int(emp_nums[0]) if emp_nums else 0
+            if people_on_site <= 10 and first_num >= 200:
+                # Very likely wrong company — clear the count, let DeepSeek decide from site content
+                _company_data["employee_count"] = ""
+                _emp_from_structured = False
+
+        pp_text, pp_proj = _lookup_results.get("planning", ("", 0))
+        if pp_text:
+            _extra_corpus += f"\n\n[SOURCE: Planning Portal]\n{pp_text}"
+
+        # People fallback via SerpAPI (only if website had none)
+        if len(_company_data.get("people", [])) == 0:
+            people_text = search_people_via_serpapi(
+                _company_data.get("company_name", _quick_name), _domain
+            )
+            if people_text:
+                _extra_corpus += f"\n\n[SOURCE: People Search]\n{people_text}"
+
+        # Instead of full re-analysis, do a SMALL targeted supplement call
+        # This is ~3x faster than running analyze_company again on the full corpus
+        if _extra_corpus:
+            existing_people = len(_company_data.get("people", []))
+            existing_projects = len(_company_data.get("projects", []))
+
+            # Only run supplement if there are actual gaps to fill
+            needs_supplement = (existing_people < 3) or (existing_projects < 2)
+
+            if needs_supplement:
+                if status_callback:
+                    status_callback("enriching", f"Extracting additional data...", 70)
+
+                supplement_raw = analyze_supplement(
+                    _extra_corpus, existing_people, existing_projects
+                )
+                supplement = safe_json(supplement_raw)
+
+                # Merge supplement people (deduplicate by name)
+                if supplement.get("people"):
+                    existing_names = {p.get("name", "").lower() for p in _company_data.get("people", [])}
+                    for p in supplement["people"]:
+                        if p.get("name", "").lower() not in existing_names:
+                            _company_data.setdefault("people", []).append(p)
+                            existing_names.add(p["name"].lower())
+
+                # Merge supplement projects (deduplicate by name)
+                if supplement.get("projects"):
+                    existing_proj_names = {p.get("name", "").lower() for p in _company_data.get("projects", [])}
+                    for p in supplement["projects"]:
+                        if p.get("name", "").lower() not in existing_proj_names:
+                            _company_data.setdefault("projects", []).append(p)
+
+                # Fill gaps only
+                if supplement.get("locations") and not _company_data.get("locations", []):
+                    _company_data["locations"] = supplement["locations"]
+                if supplement.get("founded") and not _company_data.get("founded"):
+                    _company_data["founded"] = supplement["founded"]
+                if not _emp_from_structured and supplement.get("employee_count"):
+                    _company_data["employee_count"] = supplement["employee_count"]
+
+        if not _company_data.get("employee_count"):
+            fb_emp = extract_employee_count_from_text(_extra_corpus)
+            if fb_emp:
+                _company_data["employee_count"] = fb_emp
+
+        # ── STEP 4: Sales strategy ──
+        if status_callback:
+            status_callback("strategy", f"Building sales strategy...", 85)
+
+        sales_raw = analyze_sales(corpus + _extra_corpus[:5000], json.dumps(_company_data))
+        _sales_data = safe_json(sales_raw)
+
+        if status_callback:
+            status_callback("saving", f"Saving report...", 95)
+
+        _entry = {
+            "domain":       _domain,
+            "company":      _company_data.get("company_name", website_url),
+            "score":        _sales_data.get("overall_score", "Cold"),
+            "lead_score":   _sales_data.get("lead_score", 0),
+            "date":         now_gmt2().strftime("%d %b %Y %H:%M"),
+            "pages_count":  len(pages),
+            "company_data": _company_data,
+            "sales_data":   _sales_data,
+        }
+        save_history(_entry)
+
+        if status_callback:
+            status_callback("complete", "Done!", 100)
+
+        return _entry, None
+
+    except Exception as e:
+        return None, f"Error processing {website_url}: {str(e)}"
+
+
+# ── PDF EXPORT ───────────────────────────────────────────────────────────────
 
 def export_pdf(company, cd, sd):
-    import io
     from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors
     from reportlab.lib.styles import ParagraphStyle
@@ -1397,26 +1589,24 @@ def export_pdf(company, cd, sd):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=20*mm, rightMargin=20*mm, topMargin=20*mm, bottomMargin=20*mm)
 
-    INK      = colors.HexColor("#1a1a1a")
-    ACCENT   = colors.HexColor("#1a1a1a")
-    MUTED    = colors.HexColor("#6b7280")
-    LIGHT_BG = colors.HexColor("#f9fafb")
-    BORDER   = colors.HexColor("#e5e7eb")
-    WHITE    = colors.white
+    INK    = colors.HexColor("#1a1a1a")
+    MUTED  = colors.HexColor("#6b7280")
+    LIGHT  = colors.HexColor("#f9fafb")
+    BORDER = colors.HexColor("#e5e7eb")
 
     def style(name, **kw):
         base = dict(fontName="Helvetica", fontSize=10, textColor=INK, leading=16, spaceAfter=2)
         base.update(kw)
         return ParagraphStyle(name, **base)
 
-    S_TITLE   = style("title",   fontName="Helvetica-Bold", fontSize=22, textColor=INK, spaceAfter=10)
+    S_TITLE   = style("title",   fontName="Helvetica-Bold", fontSize=22, spaceAfter=10)
     S_SCORE   = style("score",   fontName="Helvetica-Bold", fontSize=11, textColor=MUTED, spaceAfter=4)
     S_META    = style("meta",    fontSize=9, textColor=MUTED, spaceAfter=8)
-    S_SECTION = style("section", fontName="Helvetica-Bold", fontSize=9, textColor=ACCENT, spaceBefore=14, spaceAfter=6, letterSpacing=1.5)
-    S_BODY    = style("body",    fontSize=10, textColor=INK, leading=15, spaceAfter=4)
-    S_BULLET  = style("bullet",  fontSize=10, textColor=INK, leading=15, leftIndent=12, spaceAfter=3)
+    S_SECTION = style("section", fontName="Helvetica-Bold", fontSize=9, textColor=INK, spaceBefore=14, spaceAfter=6)
+    S_BODY    = style("body",    fontSize=10, leading=15, spaceAfter=4)
+    S_BULLET  = style("bullet",  fontSize=10, leading=15, leftIndent=12, spaceAfter=3)
     S_LABEL   = style("label",   fontName="Helvetica-Bold", fontSize=9, textColor=MUTED, spaceAfter=2)
-    S_ITALIC  = style("italic",  fontSize=10, textColor=INK, leading=15, italics=True, leftIndent=12)
+    S_ITALIC  = style("italic",  fontSize=10, leading=15, spaceAfter=4)
 
     story = []
 
@@ -1431,58 +1621,38 @@ def export_pdf(company, cd, sd):
 
     def label_value(label, value):
         story.append(Paragraph(label.upper(), S_LABEL))
-        story.append(Paragraph(value, S_BODY))
+        story.append(Paragraph(str(value), S_BODY))
         story.append(Spacer(1, 2*mm))
 
-    score     = sd.get("overall_score", "Warm")
-    locs      = ", ".join(cd.get("locations", [])) or "—"
-    emp       = cd.get("employee_count") or "—"
-    conf      = cd.get("confidence", "—")
+    score = sd.get("overall_score", "Warm")
+    locs = ", ".join(cd.get("locations", [])) or "—"
+    emp = cd.get("employee_count") or "—"
+    conf = cd.get("confidence", "—")
     generated = now_gmt2().strftime("%d %b %Y %H:%M")
 
     story.append(Paragraph(company, S_TITLE))
     story.append(Paragraph(f"{score.upper()} LEAD", S_SCORE))
     story.append(Paragraph(f"Offices: {locs}  |  Employees: {emp}  |  Confidence: {conf}  |  Generated: {generated}", S_META))
     story.append(Paragraph(sd.get("score_reason", ""), S_BODY))
-    story.append(HRFlowable(width="100%", thickness=1, color=ACCENT, spaceAfter=6))
+    story.append(HRFlowable(width="100%", thickness=1, color=INK, spaceAfter=6))
 
     section("Company Overview");          bullets(cd.get("overview", []))
     section("Engineering Capabilities");  bullets(cd.get("engineering_capabilities", []))
 
-    # ── PROJECTS ──
     projects = cd.get("projects", [])
     if projects:
         section("Delivered Projects")
         for proj in projects:
-            name        = proj.get("name", "Unknown")
-            ptype       = proj.get("type", "")
-            location    = proj.get("location", "")
-            client      = proj.get("client", "")
-            description = proj.get("description", "")
-            fem         = proj.get("fem_relevant", False)
-    
-            meta_parts = []
-            if ptype:
-                meta_parts.append(ptype)
-            if location:
-                meta_parts.append(location)
-            if client:
-                meta_parts.append(f"Client: {client}")
-            if fem:
-                meta_parts.append("FEM RELEVANT")
-            meta_line = "  ·  ".join(meta_parts)
-    
+            name = proj.get("name", "Unknown")
+            meta_parts = [p for p in [proj.get("type",""), proj.get("location",""),
+                          f"Client: {proj['client']}" if proj.get("client") else "",
+                          "FEM RELEVANT" if proj.get("fem_relevant") else ""] if p]
             story.append(Paragraph(f"<b>{name}</b>", S_BODY))
-            if meta_line:
-                story.append(Paragraph(meta_line, S_META))
-            if description:
-                story.append(Paragraph(description, S_BULLET))
+            if meta_parts:
+                story.append(Paragraph("  ·  ".join(meta_parts), S_META))
+            if proj.get("description"):
+                story.append(Paragraph(proj["description"], S_BULLET))
             story.append(Spacer(1, 2*mm))
-
-    pts = cd.get("project_types", [])
-    if pts:
-        section("Project Types")
-        story.append(Paragraph("  ·  ".join(pts), S_BODY))
 
     sw = cd.get("software_mentioned", [])
     if sw:
@@ -1500,12 +1670,11 @@ def export_pdf(company, cd, sd):
             table_data.append([p.get("name",""), p.get("role",""), p.get("tier","")])
         t = Table(table_data, colWidths=[55*mm, 80*mm, 30*mm])
         t.setStyle(TableStyle([
-            ("BACKGROUND",    (0,0),(-1,0),  colors.HexColor("#f3f4f6")),
-            ("TEXTCOLOR",     (0,0),(-1,0),  INK),
-            ("FONTNAME",      (0,0),(-1,0),  "Helvetica-Bold"),
-            ("FONTSIZE",      (0,0),(-1,0),  8),
+            ("BACKGROUND",    (0,0),(-1,0), colors.HexColor("#f3f4f6")),
+            ("FONTNAME",      (0,0),(-1,0), "Helvetica-Bold"),
+            ("FONTSIZE",      (0,0),(-1,0), 8),
             ("FONTSIZE",      (0,1),(-1,-1), 9),
-            ("ROWBACKGROUNDS",(0,1),(-1,-1), [WHITE, LIGHT_BG]),
+            ("ROWBACKGROUNDS",(0,1),(-1,-1), [colors.white, LIGHT]),
             ("GRID",          (0,0),(-1,-1), 0.3, BORDER),
             ("TOPPADDING",    (0,0),(-1,-1), 5),
             ("BOTTOMPADDING", (0,0),(-1,-1), 5),
@@ -1527,7 +1696,6 @@ def export_pdf(company, cd, sd):
     if objs:
         story.append(Paragraph("LIKELY OBJECTIONS", S_LABEL))
         bullets(objs)
-        story.append(Spacer(1, 2*mm))
 
     section("Pre-Meeting Cheat Sheet")
     story.append(Paragraph("3 THINGS TO MENTION", S_LABEL))
@@ -1545,12 +1713,11 @@ def export_pdf(company, cd, sd):
     if roles:
         section("Open Vacancies")
         for role in roles:
-            title  = role.get("title", "Unknown")
+            title = role.get("title", "Unknown")
             skills = ", ".join(role.get("skills", [])) or "—"
-            fem    = " · FEM MENTIONED" if role.get("fem_mentioned") else ""
+            fem = " · FEM MENTIONED" if role.get("fem_mentioned") else ""
             story.append(Paragraph(f"<b>{title}</b>{fem}", S_BODY))
             story.append(Paragraph(f"Skills: {skills}", S_META))
-            story.append(Spacer(1, 1*mm))
 
     story.append(Spacer(1, 8*mm))
     story.append(HRFlowable(width="100%", thickness=0.5, color=BORDER))
@@ -1563,1169 +1730,438 @@ def export_pdf(company, cd, sd):
     return buffer.read()
 
 
-# ── TOP BAR ───────────────────────────────────────────────────────────────────
-st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-col_logo, col_user = st.columns([6, 1])
-with col_logo:
-    st.markdown("""
-    <div style='display:flex;align-items:center;gap:12px;padding:4px 0 20px;'>
-        <div style='font-family:Inter,sans-serif;font-size:20px;font-weight:700;color:#1a1a1a;letter-spacing:0.05em;'>
-            MIDAS <span style='color:#1a1a1a;'> </span> PRESALES INTEL
-        </div>
-        <div style='font-family:"Inter",sans-serif;font-size:10px;color:#9ca3af;letter-spacing:0.1em;
-             background:#f9fafb;border:1px solid #e5e7eb;padding:3px 10px;border-radius:20px;'>
-            SALES INTELLIGENCE
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-with col_user:
-    firecrawl_key = st.session_state.get("firecrawl_key", "")
-    credits = get_firecrawl_credits(firecrawl_key)
-    credit_display = f"Firecrawl: {credits} credits" if credits is not None else ("Firecrawl: checking..." if firecrawl_key else "Firecrawl: no key")
-    st.markdown(f"""
-    <div style='text-align:right;padding-top:4px;'>
-        <div style='font-size:12px;color:#6b7280;font-family:"Inter",sans-serif;'>Manoj | MIDAS IT</div>
-        <div style='font-size:11px;color:#1a1a1a;font-family:"Inter",sans-serif;margin-top:2px;'>{credit_display}</div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-# ── FIRECRAWL KEY INPUT ───────────────────────────────────────────────────────
-if not st.session_state.get("firecrawl_key"):
-    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-    st.markdown('<div class="sec-label">API Configuration</div>', unsafe_allow_html=True)
-    st.markdown("""
-    <div style='background:white;border:1px solid #f3f4f6;border-radius:8px;padding:20px 24px;margin-bottom:16px;'>
-        <div style='font-weight:600;font-size:15px;color:#1a1a1a;margin-bottom:6px;'>Firecrawl API Key Required</div>
-        <div style='font-size:13px;color:#6b7280;'>Each team member uses their own key. Get yours free at
-            <a href='https://www.firecrawl.dev/app/api-keys' target='_blank'>firecrawl.dev/app/api-keys ↗</a>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    fk_col1, fk_col2 = st.columns([5, 1])
-    with fk_col1:
-        fk_input = st.text_input("", placeholder="Enter your Firecrawl API key (fc-...)", type="password", label_visibility="collapsed")
-    with fk_col2:
-        if st.button("Save Key →", use_container_width=True):
-            if fk_input and fk_input.startswith("fc-"):
-                st.session_state["firecrawl_key"] = fk_input
-                st.rerun()
-            elif fk_input:
-                st.error("Key must start with fc-")
-            else:
-                st.error("Please enter a key")
-    st.stop()
-else:
-    with st.expander("🔑 Firecrawl key active", expanded=False):
-        st.caption(f"Key ending in ...{st.session_state['firecrawl_key'][-6:]}")
-        if st.button("Clear key / Switch key"):
-            del st.session_state["firecrawl_key"]
-            st.rerun()
+# ── FIRECRAWL CREDITS ────────────────────────────────────────────────────────
 
-# ── LAYOUT ────────────────────────────────────────────────────────────────────
-sidebar, main = st.columns([1, 4])
+def extract_credit_value(data):
+    if isinstance(data, dict):
+        for key in ("credits","remaining","remainingCredits","remaining_credits","availableCredits"):
+            value = data.get(key)
+            if value not in (None, ""):
+                return value
+        for value in data.values():
+            found = extract_credit_value(value)
+            if found not in (None, ""):
+                return found
+    elif isinstance(data, list):
+        for item in data:
+            found = extract_credit_value(item)
+            if found not in (None, ""):
+                return found
+    return None
 
-# ── SIDEBAR: HISTORY ──────────────────────────────────────────────────────────
-with sidebar:
-    st.markdown('<div class="sec-label">Recent Searches</div>', unsafe_allow_html=True)
+
+# ── API ROUTES ───────────────────────────────────────────────────────────────
+
+@app.get("/")
+def root():
+    return {"status": "ok", "app": "MIDAS Pre Sales Intel API", "version": "1.0.0"}
+
+
+@app.get("/api/history")
+def get_history(search: Optional[str] = None):
     history = load_history()
+    if search:
+        search_lower = search.lower()
+        history = [h for h in history if search_lower in h.get("company","").lower() or search_lower in h.get("domain","").lower()]
+    # Add days_ago to each entry
+    for h in history:
+        h["days_ago"] = days_ago(h.get("date", ""))
+    return {"history": history}
 
-    search_query = st.text_input("", placeholder="🔍 Search companies...", label_visibility="collapsed")
-    if search_query:
-        history = [h for h in history if search_query.lower() in h.get("company", "").lower() or search_query.lower() in h.get("domain", "").lower()]
 
-    if not history:
-        st.markdown("<div style='font-size:12px;color:#9ca3af;font-family:Inter,sans-serif;padding:8px 0;'>No searches yet</div>", unsafe_allow_html=True)
-    else:
-        for i, h in enumerate(history):
-            sc    = h.get("score", "Cold")
-            name  = h.get("company", h.get("domain", "Unknown"))
-            date  = days_ago(h.get("date", ""))
-            emoji = score_emoji(sc)
-            cls   = score_cls(sc)
+@app.get("/api/history/{domain}")
+def get_report(domain: str):
+    entry = find_in_history(domain)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Report not found")
+    entry["days_ago"] = days_ago(entry.get("date", ""))
+    return entry
 
-            col_info, col_btn = st.columns([3, 1])
-            with col_info:
-                st.markdown(f"""
-                <div style='padding:8px 0;border-bottom:1px solid #f3f4f6;'>
-                    <div style='font-size:13px;font-weight:600;color:#1a1a1a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{name}</div>
-                    <div style='display:flex;align-items:center;gap:6px;margin-top:3px;flex-wrap:wrap;'>
-                        <span class='score-badge {cls}' style='font-size:9px;padding:2px 8px;'>{emoji} {sc}</span>
-                        <span style='font-size:10px;color:#9ca3af;font-family:Inter,sans-serif;'>{date}</span>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-            with col_btn:
-                btn1, btn2 = st.columns(2)
-                with btn1:
-                    if st.button("↗", key=f"load_{i}", help=f"Load {name}"):
-                        st.session_state["loaded_report"] = h
-                        st.session_state["active_domain"] = h.get("domain", "")
-                        st.rerun()
-                with btn2:
-                    if st.button("🗑", key=f"del_{i}", help=f"Delete {name}"):
-                        st.session_state["confirm_delete"] = h.get("domain", "")
 
-        # ── DOWNLOAD ALL AS CSV ──────────────────────────────────────────
-        st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-        st.markdown('<div class="sec-label">Bulk Export</div>', unsafe_allow_html=True)
+@app.delete("/api/history/{domain}")
+def delete_report(domain: str):
+    delete_from_history(domain)
+    return {"status": "deleted", "domain": domain}
 
-        import csv, io as _io
-        all_history = load_history()
-        if all_history:
-            csv_buffer = _io.StringIO()
-            writer = csv.writer(csv_buffer)
-            writer.writerow([
-                "Company", "Domain", "Score", "Score Reason", "Date Analysed",
-                "Pages Crawled", "Locations", "Employee Count", "Founded",
-                "Confidence", "Confidence Reason",
-                "Engineering Capabilities", "Project Types", "Software Mentioned",
-                "FEM Opportunities", "Pain Points",
-                "Entry Point", "Value Positioning",
-                "Likely Objections", "Hiring Signals", "Expansion Signals",
-                "Recommended Products", "Product Reason",
-                "Opening Line", "Pre-Meeting Mentions", "Smart Questions",
-                "People Count", "Projects Count", "Open Roles Count"
-            ])
-            for h in all_history:
-                cd = h.get("company_data", {}) or {}
-                sd = h.get("sales_data", {}) or {}
-                writer.writerow([
-                    h.get("company", ""),
-                    h.get("domain", ""),
-                    h.get("score", ""),
-                    sd.get("score_reason", ""),
-                    h.get("date", ""),
-                    h.get("pages_count", ""),
-                    " | ".join(cd.get("locations", [])),
-                    cd.get("employee_count", ""),
-                    cd.get("founded", ""),
-                    cd.get("confidence", ""),
-                    cd.get("confidence_reason", ""),
-                    " | ".join(cd.get("engineering_capabilities", [])),
-                    " | ".join(cd.get("project_types", [])),
-                    " | ".join(cd.get("software_mentioned", [])),
-                    " | ".join(sd.get("fem_opportunities", [])),
-                    " | ".join(sd.get("pain_points", [])),
-                    sd.get("entry_point", ""),
-                    sd.get("value_positioning", ""),
-                    " | ".join(sd.get("likely_objections", [])),
-                    " | ".join(sd.get("hiring_signals", [])),
-                    " | ".join(sd.get("expansion_signals", [])),
-                    " | ".join(sd.get("recommended_products", [])),
-                    sd.get("product_reason", ""),
-                    sd.get("opening_line", ""),
-                    " | ".join(sd.get("pre_meeting_mention", [])),
-                    " | ".join(sd.get("smart_questions", [])),
-                    len(cd.get("people", [])),
-                    len(cd.get("projects", [])),
-                    len(cd.get("open_roles", []))
-                ])
-            csv_data = csv_buffer.getvalue()
-            st.download_button(
-                "📥 Download All as CSV",
-                data=csv_data,
-                file_name=f"MIDAS_Intel_All_Companies_{datetime.now().strftime('%Y%m%d')}.csv",
-                mime="text/csv",
-                use_container_width=True
-            )
-            st.caption(f"{len(all_history)} companies in export")
-        else:
-            st.markdown("<div style='font-size:11px;color:#9ca3af;'>No data to export yet</div>", unsafe_allow_html=True)
 
-if st.session_state.get("confirm_delete"):
-    domain_to_delete = st.session_state["confirm_delete"]
-    match = next((h for h in history if h.get("domain") == domain_to_delete), None)
-    company_to_delete = match.get("company", domain_to_delete) if match else domain_to_delete
-    st.warning(f"⚠ Delete **{company_to_delete}** from history? This cannot be undone.")
-    cd1, cd2 = st.columns(2)
-    with cd1:
-        if st.button("✅ Yes, Delete", use_container_width=True):
-            delete_from_history(domain_to_delete)
-            if st.session_state.get("active_domain") == domain_to_delete:
-                if "loaded_report" in st.session_state:
-                    del st.session_state["loaded_report"]
-                st.session_state["active_domain"] = ""
-            del st.session_state["confirm_delete"]
-            st.rerun()
-    with cd2:
-        if st.button("❌ Cancel", use_container_width=True):
-            del st.session_state["confirm_delete"]
-            st.rerun()
+@app.get("/api/notes/{domain}")
+def get_notes(domain: str):
+    return get_note(domain)
 
-    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-    st.markdown("<div style='font-family:Inter,sans-serif;font-size:9px;color:#ccc;'>Powered by Supabase</div>", unsafe_allow_html=True)
 
-# ── BATCH ANALYSIS FUNCTION ──────────────────────────────────────────────────
-def analyse_single_url(website_url, progress_callback=None, status_callback=None):
-    """Run the full analysis pipeline for one URL. Returns (entry_dict, error_str)."""
-    import time as _time
+@app.post("/api/notes")
+def save_notes(note: NoteUpdate):
+    save_note_db(note.domain, note.note)
+    return {"status": "saved", "domain": note.domain}
+
+
+@app.post("/api/email")
+def generate_email(req: EmailRequest):
+    email_text = generate_email_text(req.company_data, req.sales_data)
+    return {"email": email_text}
+
+
+@app.get("/api/credits")
+def get_credits():
+    if not FIRECRAWL_KEY:
+        return {"credits": None}
     try:
-        if not website_url.startswith("http"):
-            website_url = "https://" + website_url
-        
-        _domain = extract_domain(website_url)
-        
-        if status_callback:
-            status_callback(f"🔍 Crawling {_domain}...")
-        
-        # Crawl
-        pages = firecrawl_crawl(website_url)
-        
-        # Smart fallback for thin crawls
-        def _is_thin(pl):
-            if not pl: return True
-            if all(len(p.get("markdown","")) < 500 for p in pl): return True
-            if len([p for p in pl if len(p.get("markdown","")) > 500]) < 3: return True
-            return False
-        
-        if _is_thin(pages):
-            if status_callback:
-                status_callback(f"🌐 Trying ScrapingBee for {_domain}...")
-            sb_pages = scrape_with_scrapingbee(website_url)
-            if sb_pages and any(len(p.get("markdown","")) > 500 for p in sb_pages):
-                pages = sb_pages
-            elif _is_thin(pages):
-                if status_callback:
-                    status_callback(f"🔄 Trying direct fetch for {_domain}...")
-                direct_pages = direct_fetch(website_url)
-                if direct_pages and any(len(p.get("markdown","")) > 500 for p in direct_pages):
-                    pages = direct_pages
-                elif _is_thin(pages):
-                    if status_callback:
-                        status_callback(f"🔄 Trying SerpAPI for {_domain}...")
-                    serp_pages = fetch_serpapi_site_results(website_url)
-                    if serp_pages:
-                        pages = serp_pages
-        
-        if not pages:
-            return None, f"Could not extract content from {_domain}"
-        
-        if progress_callback: progress_callback(30)
-        
-        # Build corpus + analyse
-        corpus = build_corpus(pages)
-        if status_callback:
-            status_callback(f"🧠 Analysing {_domain}...")
-        company_raw = analyze_company(corpus)
-        _company_data = safe_json(company_raw)
-        
-        if progress_callback: progress_callback(60)
-        
-        # Additional source lookups
-        _company_name = _company_data.get("company_name", "")
-        _extra_corpus = ""
-        
-        if status_callback:
-            status_callback(f"📊 Enriching {_domain}...")
-        
-        lookup_jobs = {
-            "company_registry": (lookup_companies_house, (_company_name,), {"locations": _company_data.get("locations", [])}),
-            "linkedin": (lookup_linkedin_company, (_company_name,), {}),
-            "reviews": (lookup_glassdoor, (_company_name, _domain), {}),
-            "planning": (lookup_planning_portal, (_company_name,), {}),
-        }
-        _lookup_results = {}
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            future_map = {
-                executor.submit(func, *args, **kwargs): name
-                for name, (func, args, kwargs) in lookup_jobs.items()
-            }
-            for future in as_completed(future_map):
-                name = future_map[future]
-                try:
-                    _lookup_results[name] = future.result()
-                except:
-                    _lookup_results[name] = ("", 0)
-        
-        ch_text, ch_dirs = _lookup_results.get("company_registry", ("", 0))
-        if ch_text:
-            _extra_corpus += f"\n\n[SOURCE: Company Registry]\n{ch_text}"
-        
-        li_text, li_emp = _lookup_results.get("linkedin", ("", ""))
-        if li_text:
-            _extra_corpus += f"\n\n[SOURCE: LinkedIn]\n{li_text}"
-            if li_emp and not _company_data.get("employee_count"):
-                _company_data["employee_count"] = li_emp
-        
-        gd_text, gd_rev = _lookup_results.get("reviews", ("", 0))
-        gd_emp = extract_employee_count_from_text(gd_text)
-        if gd_text:
-            _extra_corpus += f"\n\n[SOURCE: Glassdoor & Indeed Reviews]\n{gd_text}"
-        if gd_emp and not _company_data.get("employee_count"):
-            _company_data["employee_count"] = gd_emp
-        
-        pp_text, pp_proj = _lookup_results.get("planning", ("", 0))
-        if pp_text:
-            _extra_corpus += f"\n\n[SOURCE: Planning Portal]\n{pp_text}"
-        
-        # People fallback
-        if len(_company_data.get("people", [])) == 0:
-            people_text = search_people_via_serpapi(_company_name, _domain)
-            if people_text:
-                _extra_corpus += f"\n\n[SOURCE: People Search]\n{people_text}"
-        
-        # Re-analyse with enriched corpus
-        if _extra_corpus:
-            enriched = corpus + _extra_corpus[:20000]
-            company_raw2 = analyze_company(enriched)
-            _company_data2 = safe_json(company_raw2)
-            for key in ["people", "projects", "locations", "employee_count", "founded"]:
-                if _company_data2.get(key) and len(str(_company_data2.get(key))) > len(str(_company_data.get(key, ""))):
-                    _company_data[key] = _company_data2[key]
-        
-        if not _company_data.get("employee_count"):
-            fb_emp = extract_employee_count_from_text(_extra_corpus)
-            if fb_emp:
-                _company_data["employee_count"] = fb_emp
-        
-        if progress_callback: progress_callback(80)
-        
-        # Sales strategy
-        if status_callback:
-            status_callback(f"💡 Strategy for {_domain}...")
-        sales_raw = analyze_sales(corpus + _extra_corpus[:5000], company_raw)
-        _sales_data = safe_json(sales_raw)
-        
-        if progress_callback: progress_callback(100)
-        
-        _entry = {
-            "domain":       _domain,
-            "company":      _company_data.get("company_name", website_url),
-            "score":        _sales_data.get("overall_score", "Cold"),
-            "date":         now_gmt2().strftime("%d %b %Y %H:%M"),
-            "pages_count":  len(pages),
-            "company_data": _company_data,
-            "sales_data":   _sales_data,
-        }
-        save_history(_entry)
-        return _entry, None
-    
-    except Exception as e:
-        return None, f"Error processing {website_url}: {str(e)}"
+        headers = {"Authorization": f"Bearer {FIRECRAWL_KEY}"}
+        resp = http.get("https://api.firecrawl.dev/v1/team/credit-usage", headers=headers, timeout=10)
+        if resp.status_code == 404:
+            resp = http.get("https://api.firecrawl.dev/v2/team/credit-usage", headers=headers, timeout=10)
+        if resp.status_code >= 400:
+            return {"credits": None}
+        return {"credits": extract_credit_value(resp.json())}
+    except:
+        return {"credits": None}
 
 
-# ── MAIN ──────────────────────────────────────────────────────────────────────
-with main:
-    # ── MODE TOGGLE ──────────────────────────────────────────────────────────
-    mode_col1, mode_col2 = st.columns([4, 2])
-    with mode_col2:
-        input_mode = st.radio("", ["Single", "Batch"], horizontal=True, label_visibility="collapsed", key="input_mode")
-    
-    run = False
-    batch_run = False
+@app.get("/api/export/pdf/{domain}")
+def export_pdf_route(domain: str):
+    entry = find_in_history(domain)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Report not found")
 
-    if input_mode == "Single":
-        c1, c2 = st.columns([5, 1])
-        with c1:
-            default_url = ""
-            if "loaded_report" in st.session_state:
-                default_url = st.session_state["loaded_report"].get("domain", "")
-                if default_url:
-                    default_url = "https://" + default_url
+    cd = entry.get("company_data", {}) or {}
+    sd = entry.get("sales_data", {}) or {}
+    company = entry.get("company", domain)
 
-            website = st.text_input("", value=default_url, placeholder="https://target-engineering-company.com", label_visibility="collapsed")
-        with c2:
-            run = st.button("Analyse →", use_container_width=True)
+    pdf_bytes = export_pdf(company, cd, sd)
+    fname = f"MIDAS_Intel_{company.replace(' ','_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
 
-        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'}
+    )
 
-        # ── ALREADY RESEARCHED WARNING ─────────────────────────────────────────
-        if website and not run:
-            domain = extract_domain(website if website.startswith("http") else "https://" + website)
-            existing = find_in_history(domain)
-            if existing:
-                sc   = existing.get("score", "Cold")
-                date = days_ago(existing.get("date", ""))
-                st.markdown(f"""
-                <div style='background:#fffbeb;border:1px solid #fde68a;border-left:3px solid #1a1a1a;
-                     border-radius:8px;padding:14px 18px;margin-bottom:12px;'>
-                    <div style='font-family:Inter,sans-serif;font-weight:700;font-size:13px;color:#1a1a1a;margin-bottom:4px;'>
-                        ⚠ Already Researched
-                    </div>
-                    <div style='font-size:13px;color:#4b5563;'>
-                        <b>{existing.get('company', domain)}</b> was last analysed <b>{date}</b> — scored as <b>{score_emoji(sc)} {sc}</b>.
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-                wb1, wb2 = st.columns([1, 1])
-                with wb1:
-                    if st.button("📂 View Saved Report", use_container_width=True):
-                        st.session_state["loaded_report"] = existing
-                        st.session_state["active_domain"] = domain
-                        st.rerun()
-                with wb2:
-                    if st.button("🔄 Re-crawl Fresh", use_container_width=True):
-                        run = True
 
-    else:
-        # ── BATCH MODE ───────────────────────────────────────────────────────
-        st.markdown("""
-        <div style='background:white;border:1px solid #f3f4f6;border-radius:8px;padding:16px 20px;margin-bottom:12px;'>
-            <div style='font-weight:600;font-size:14px;color:#1a1a1a;margin-bottom:6px;'>📋 Batch Analysis</div>
-            <div style='font-size:13px;color:#6b7280;line-height:1.8;'>
-                Paste one URL per line. Each company will be crawled, analysed and saved automatically.<br>
-                Already-researched companies will be skipped unless you tick <b>Re-crawl all</b>.
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        batch_urls = st.text_area(
-            "",
-            height=200,
-            placeholder="https://company-one.com\nhttps://company-two.com\nhttps://company-three.com\n...",
-            label_visibility="collapsed",
-            key="batch_urls_input"
-        )
-        
-        bc1, bc2, bc3 = st.columns([1, 1, 3])
-        with bc1:
-            batch_run = st.button("🚀 Run Batch", use_container_width=True)
-        with bc2:
-            batch_recrawl = st.checkbox("Re-crawl all", value=False, key="batch_recrawl")
-        
-        # ── BATCH EXECUTION ──────────────────────────────────────────────────
-        if batch_run and batch_urls.strip():
-            raw_lines = [l.strip() for l in batch_urls.strip().split("\n") if l.strip()]
-            # Deduplicate
-            seen_domains = set()
-            urls_to_process = []
-            for line in raw_lines:
-                url = line if line.startswith("http") else "https://" + line
-                d = extract_domain(url)
-                if d and d not in seen_domains:
-                    seen_domains.add(d)
-                    urls_to_process.append(url)
-            
-            total = len(urls_to_process)
-            if total == 0:
-                st.warning("No valid URLs found.")
-            else:
-                st.markdown(f"""
-                <div style='background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 18px;margin-bottom:16px;'>
-                    <div style='font-weight:600;font-size:14px;color:#166534;'>Starting batch: {total} companies</div>
-                    <div style='font-size:12px;color:#4ade80;margin-top:2px;'>Each takes ~60-120 seconds depending on site complexity</div>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                overall_prog = st.progress(0)
-                batch_status = st.empty()
-                results_container = st.container()
-                
-                completed = 0
-                skipped = 0
-                failed = 0
-                succeeded = 0
-                batch_results = []
-                
-                for idx, url in enumerate(urls_to_process):
-                    d = extract_domain(url)
-                    
-                    # Check if already exists
-                    if not batch_recrawl:
-                        existing = find_in_history(d)
-                        if existing:
-                            skipped += 1
-                            completed += 1
-                            overall_prog.progress(completed / total)
-                            batch_results.append({"domain": d, "company": existing.get("company", d), "status": "⏭ Skipped", "score": existing.get("score", "—"), "reason": "Already in history"})
-                            with results_container:
-                                st.markdown(f"<div style='font-size:12px;color:#9ca3af;padding:4px 0;'>⏭ <b>{existing.get('company', d)}</b> — already researched, skipped</div>", unsafe_allow_html=True)
-                            continue
-                    
-                    batch_status.markdown(f"""
-                    <div style='background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 16px;'>
-                        <div style='font-weight:600;font-size:13px;color:#1e40af;'>Processing {idx+1} of {total}: {d}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    def _prog_cb(pct):
-                        # Map per-company progress into overall progress
-                        base = completed / total
-                        chunk = (1 / total) * (pct / 100)
-                        overall_prog.progress(min(base + chunk, 1.0))
-                    
-                    def _stat_cb(msg):
-                        batch_status.markdown(f"""
-                        <div style='background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 16px;'>
-                            <div style='font-weight:600;font-size:13px;color:#1e40af;'>Processing {idx+1} of {total}: {d}</div>
-                            <div style='font-size:11px;color:#3b82f6;margin-top:2px;'>{msg}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    
-                    entry, error = analyse_single_url(url, progress_callback=_prog_cb, status_callback=_stat_cb)
-                    
-                    completed += 1
-                    overall_prog.progress(completed / total)
-                    
-                    if entry:
-                        succeeded += 1
-                        sc = entry.get("score", "Cold")
-                        batch_results.append({"domain": d, "company": entry.get("company", d), "status": "✅ Done", "score": sc, "reason": ""})
-                        with results_container:
-                            st.markdown(f"<div style='font-size:12px;color:#16a34a;padding:4px 0;'>✅ <b>{entry.get('company', d)}</b> — {score_emoji(sc)} {sc}</div>", unsafe_allow_html=True)
-                    else:
-                        failed += 1
-                        batch_results.append({"domain": d, "company": d, "status": "❌ Failed", "score": "—", "reason": error or "Unknown error"})
-                        with results_container:
-                            st.markdown(f"<div style='font-size:12px;color:#dc2626;padding:4px 0;'>❌ <b>{d}</b> — {error}</div>", unsafe_allow_html=True)
-                
-                batch_status.empty()
-                overall_prog.empty()
-                
-                # Save batch results to session state so they survive the rerun
-                st.session_state["batch_results"] = batch_results
-                st.session_state["batch_succeeded"] = succeeded
-                st.session_state["batch_skipped"] = skipped
-                st.session_state["batch_failed"] = failed
-                st.rerun()
-        
-        # ── SHOW BATCH SUMMARY (persisted after rerun) ───────────────────
-        if st.session_state.get("batch_results"):
-            batch_results = st.session_state["batch_results"]
-            succeeded = st.session_state.get("batch_succeeded", 0)
-            skipped = st.session_state.get("batch_skipped", 0)
-            failed = st.session_state.get("batch_failed", 0)
-            
-            st.markdown(f"""
-            <div style='background:white;border:1px solid #f3f4f6;border-left:3px solid #1a1a1a;border-radius:8px;padding:20px 24px;margin:20px 0;'>
-                <div style='font-weight:700;font-size:16px;color:#1a1a1a;margin-bottom:10px;'>Batch Complete</div>
-                <div style='display:flex;gap:24px;flex-wrap:wrap;'>
-                    <div><span style='font-size:24px;font-weight:700;color:#16a34a;'>{succeeded}</span><br><span style='font-size:11px;color:#6b7280;'>Analysed</span></div>
-                    <div><span style='font-size:24px;font-weight:700;color:#9ca3af;'>{skipped}</span><br><span style='font-size:11px;color:#6b7280;'>Skipped</span></div>
-                    <div><span style='font-size:24px;font-weight:700;color:#dc2626;'>{failed}</span><br><span style='font-size:11px;color:#6b7280;'>Failed</span></div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Per-company results list
-            for r in batch_results:
-                if r["status"] == "✅ Done":
-                    st.markdown(f"<div style='font-size:12px;color:#16a34a;padding:4px 0;'>✅ <b>{r['company']}</b> — {score_emoji(r['score'])} {r['score']}</div>", unsafe_allow_html=True)
-                elif r["status"] == "⏭ Skipped":
-                    st.markdown(f"<div style='font-size:12px;color:#9ca3af;padding:4px 0;'>⏭ <b>{r['company']}</b> — already in history</div>", unsafe_allow_html=True)
-                else:
-                    st.markdown(f"<div style='font-size:12px;color:#dc2626;padding:4px 0;'>❌ <b>{r['domain']}</b> — {r['reason']}</div>", unsafe_allow_html=True)
-            
-            # Batch CSV download
-            import csv, io as _bio
-            batch_csv = _bio.StringIO()
-            bw = csv.writer(batch_csv)
-            bw.writerow(["Company", "Domain", "Status", "Score", "Error"])
-            for r in batch_results:
-                bw.writerow([r["company"], r["domain"], r["status"], r["score"], r["reason"]])
-            
-            bc_dl1, bc_dl2 = st.columns([1, 1])
-            with bc_dl1:
-                st.download_button(
-                    "📥 Download Batch Summary CSV",
-                    data=batch_csv.getvalue(),
-                    file_name=f"MIDAS_Batch_Summary_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                    mime="text/csv",
-                    use_container_width=True
-                )
-            with bc_dl2:
-                if st.button("✕ Clear Batch Results", use_container_width=True):
-                    del st.session_state["batch_results"]
-                    del st.session_state["batch_succeeded"]
-                    del st.session_state["batch_skipped"]
-                    del st.session_state["batch_failed"]
-                    st.rerun()
-            
-            st.info("💡 All analysed companies are now in the sidebar. Use **Download All as CSV** for the full export including these.")
+@app.get("/api/export/csv")
+def export_csv_route():
+    all_history = load_history()
+    if not all_history:
+        raise HTTPException(status_code=404, detail="No data to export")
 
-    st.divider()
-
-    # ── STATE ─────────────────────────────────────────────────────────────────
-    show_report   = False
-    company_data  = {}
-    sales_data    = {}
-    pages_count   = 0
-    company_name  = ""
-    active_domain = st.session_state.get("active_domain", "")
-
-    if "loaded_report" in st.session_state and not run:
-        rep          = st.session_state["loaded_report"]
-        company_data = rep.get("company_data", {})
-        sales_data   = rep.get("sales_data", {})
-        pages_count  = rep.get("pages_count", 0)
-        company_name = rep.get("company", rep.get("domain", "Unknown"))
-        active_domain = rep.get("domain", "")
-        st.info(f"📂 Showing saved report from {days_ago(rep.get('date',''))}. Hit Analyse → to refresh.")
-        show_report = True
-
-    elif run:
-        if not website:
-            st.warning("Please enter a website URL.")
-            st.stop()
-        if not website.startswith("http"):
-            website = "https://" + website
-
-        active_domain = extract_domain(website)
-
-        prog = st.progress(0)
-        stat = st.empty()
-
-        stat.caption("🔍 Crawling website with Firecrawl...")
-        
-        # Use cached pages if previously fetched via SerpAPI fallback button
-        if st.session_state.get("use_cache") and st.session_state.get("cache_pages"):
-            pages = st.session_state["cache_pages"]
-            st.session_state["use_cache"] = False
-            st.session_state["cache_pages"] = None
-            st.success("✅ Using SerpAPI search results")
-        else:
-            pages = firecrawl_crawl(website)
-        
-        # ── SMART FALLBACK: detect thin/failed crawls ────────────────────
-        # Check if Firecrawl returned usable content or just cookie wall junk
-        def is_thin_crawl(page_list):
-            """Returns True if the crawl result is too thin to be useful."""
-            if not page_list:
-                return True
-            # All pages under 500 chars = clearly failed
-            if all(len(p.get("markdown", "")) < 500 for p in page_list):
-                return True
-            # Any real company site should yield 3+ pages with real content
-            # If we got fewer, the crawl was likely blocked or hit a cookie wall
-            real_pages = [p for p in page_list if len(p.get("markdown", "")) > 500]
-            if len(real_pages) < 3:
-                return True
-            return False
-
-        needs_fallback = is_thin_crawl(pages)
-
-        if needs_fallback:
-            st.warning("⚠ Limited content retrieved — site may use a cookie wall or block automated crawling. Trying alternative methods...")
-
-            # Step 1 — Try ScrapingBee (real headless browser, best at cookie walls)
-            stat.caption("🌐 Trying ScrapingBee browser renderer...")
-            sb_pages = scrape_with_scrapingbee(website)
-            if sb_pages and any(len(p.get("markdown", "")) > 500 for p in sb_pages):
-                st.success(f"✅ ScrapingBee retrieved {len(sb_pages)} pages")
-                pages = sb_pages
-                needs_fallback = False
-
-            # Step 2 — Try direct fetch with subpage discovery
-            if needs_fallback:
-                stat.caption("🔄 Trying direct fetch with link discovery...")
-                direct_pages = direct_fetch(website)
-                if direct_pages and any(len(p.get("markdown", "")) > 500 for p in direct_pages):
-                    st.success(f"✅ Direct fetch retrieved {len(direct_pages)} pages")
-                    pages = direct_pages
-                    needs_fallback = False
-
-            # Step 3 — Try SerpAPI fallback search
-            if needs_fallback:
-                stat.caption("🔄 Trying SerpAPI search...")
-                cache_pages = fetch_serpapi_site_results(website)
-                if cache_pages:
-                    st.success(f"✅ SerpAPI retrieved {len(cache_pages)} results")
-                    pages = cache_pages
-                    needs_fallback = False
-
-            # Step 4 — If we got SOME content from Firecrawl + SOME from fallbacks, merge
-            if needs_fallback and pages and any(len(p.get("markdown", "")) > 300 for p in pages):
-                # We have thin but non-zero Firecrawl content — try to supplement it
-                stat.caption("🔄 Supplementing with direct subpage fetch...")
-                from urllib.parse import urlparse
-                base = f"{urlparse(website).scheme}://{urlparse(website).netloc}"
-                priority_paths = ["/about", "/about-us", "/our-team", "/team", "/people",
-                                  "/projects", "/our-projects", "/services", "/what-we-do",
-                                  "/careers", "/expertise", "/our-expertise", "/sectors"]
-                supplement_pages = []
-                for path in priority_paths:
-                    try:
-                        sub_url = base + path
-                        sub_pages = direct_fetch(sub_url)
-                        if sub_pages:
-                            for sp in sub_pages[:1]:  # just the target page, not its sublinks
-                                if len(sp.get("markdown", "")) > 500:
-                                    supplement_pages.append(sp)
-                    except:
-                        pass
-                    if len(supplement_pages) >= 6:
-                        break
-
-                if supplement_pages:
-                    st.success(f"✅ Supplemented with {len(supplement_pages)} additional subpages")
-                    # Merge: keep original pages + add supplements (deduplicate by URL)
-                    existing_urls = {p.get("url", "") for p in pages}
-                    for sp in supplement_pages:
-                        if sp.get("url", "") not in existing_urls:
-                            pages.append(sp)
-                    needs_fallback = False
-
-            # Step 5 — Manual paste if everything truly failed
-            if needs_fallback:
-                st.markdown("""
-                <div style='background:white;border:1px solid #f3f4f6;border-radius:8px;
-                     padding:16px 20px;margin-bottom:12px;'>
-                    <div style='font-weight:600;font-size:14px;color:#1a1a1a;margin-bottom:8px;'>
-                        📋 Automatic fetch failed — paste manually:
-                    </div>
-                    <div style='font-size:13px;color:#4b5563;line-height:1.8;'>
-                        1. Open the website in your browser<br>
-                        2. Press <b>Ctrl+A</b> then <b>Ctrl+C</b><br>
-                        3. Paste below and click Analyse →
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-
-                gc1, gc2 = st.columns(2)
-                with gc1:
-                    if st.button("🔄 Retry SerpAPI Search", use_container_width=True):
-                        cache_pages = fetch_serpapi_site_results(website)
-                        if cache_pages:
-                            st.session_state["cache_pages"] = cache_pages
-                            st.session_state["use_cache"] = True
-                            st.rerun()
-                        else:
-                            st.error("SerpAPI search results not available for this site")
-
-                manual_content = st.text_area(
-                    "",
-                    height=200,
-                    placeholder="Paste website content here...",
-                    label_visibility="collapsed"
-                )
-                if manual_content:
-                    pages = [{"url": website, "markdown": manual_content}]
-                else:
-                    st.stop()
-
-        
-
-        prog.progress(30)
-
-        if not pages:
-            st.error("Could not extract content. Check the URL and try again.")
-            st.stop()
-
-        stat.caption("📄 Building content corpus...")
-        corpus = build_corpus(pages)
-        prog.progress(50)
-
-        stat.caption("🧠 Extracting company profile...")
-        company_raw  = analyze_company(corpus)
-        company_data = safe_json(company_raw)
-        prog.progress(60)
-
-        # Additional source lookups (after company name known)
-        company_name_known = company_data.get("company_name", "")
-        domain_known       = extract_domain(website)
-        extra_corpus       = ""
-        source_summary     = []
-
-        stat.caption("Checking additional sources...")
-        lookup_jobs = {
-            "company_registry": (lookup_companies_house, (company_name_known,), {"locations": company_data.get("locations", [])}),
-            "linkedin": (lookup_linkedin_company, (company_name_known,), {}),
-            "reviews": (lookup_glassdoor, (company_name_known, domain_known), {}),
-            "planning": (lookup_planning_portal, (company_name_known,), {}),
-        }
-        lookup_results = {}
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            future_map = {
-                executor.submit(func, *args, **kwargs): name
-                for name, (func, args, kwargs) in lookup_jobs.items()
-            }
-            for future in as_completed(future_map):
-                name = future_map[future]
-                try:
-                    lookup_results[name] = future.result()
-                except:
-                    lookup_results[name] = ("", 0)
-
-        ch_text, ch_directors = lookup_results.get("company_registry", ("", 0))
-        if ch_text:
-            extra_corpus += f"\n\n[SOURCE: Company Registry]\n{ch_text}"
-            source_summary.append(f"Company Registry - searched Companies House (UK), OpenCorporates (EU) and TED Tenders, {ch_directors} director entries found")
-
-        li_text, li_employees = lookup_results.get("linkedin", ("", ""))
-        if li_text:
-            extra_corpus += f"\n\n[SOURCE: LinkedIn]\n{li_text}"
-            source_summary.append(f"LinkedIn - employee count signal found: {li_employees}" if li_employees else "LinkedIn - searched company page, employee count not found publicly")
-            if li_employees and not company_data.get("employee_count"):
-                company_data["employee_count"] = li_employees
-
-        gd_text, gd_reviews = lookup_results.get("reviews", ("", 0))
-        gd_employees = extract_employee_count_from_text(gd_text)
-        if gd_text:
-            extra_corpus += f"\n\n[SOURCE: Glassdoor & Indeed Reviews]\n{gd_text}"
-        if gd_employees and not company_data.get("employee_count"):
-            company_data["employee_count"] = gd_employees
-        source_summary.append(f"Glassdoor & Indeed - employee count signal found: {gd_employees}" if gd_employees else f"Glassdoor & Indeed - {gd_reviews} employee review snippets found, added to full analysis")
-
-        pp_text, pp_projects = lookup_results.get("planning", ("", 0))
-        if pp_text:
-            extra_corpus += f"\n\n[SOURCE: Planning Portal]\n{pp_text}"
-            source_summary.append(f"Planning Portal - {pp_projects} planning application mentions found, added to projects")
-        # If no people found, try SerpAPI/LinkedIn people search
-        if len(company_data.get("people", [])) == 0:
-            stat.caption("👥 Searching for people via SerpAPI & LinkedIn...")
-            people_search_text = search_people_via_serpapi(company_name_known, domain_known)
-            if people_search_text:
-                extra_corpus += f"\n\n[SOURCE: People Search]\n{people_search_text}"
-                source_summary.append(f"👥 People Search — searched LinkedIn profiles and SerpAPI for named engineers at this company")
-
-        # Re-analyse with enriched corpus if extra data found
-        if extra_corpus:
-            enriched_corpus = corpus + extra_corpus[:20000]
-            stat.caption("🧠 Re-analysing with additional sources...")
-            company_raw2  = analyze_company(enriched_corpus)
-            company_data2 = safe_json(company_raw2)
-            # Merge — prefer enriched data but keep original if enriched is empty
-            for key in ["people", "projects", "locations", "employee_count", "founded"]:
-                if company_data2.get(key) and len(str(company_data2.get(key))) > len(str(company_data.get(key, ""))):
-                    company_data[key] = company_data2[key]
-
-        if not company_data.get("employee_count"):
-            fallback_employee_count = extract_employee_count_from_text(extra_corpus)
-            if fallback_employee_count:
-                company_data["employee_count"] = fallback_employee_count
-
-        prog.progress(75)
-
-        # Show source summary to rep
-        if source_summary:
-            st.markdown('<div class="sec-label" style="margin-top:8px;">Additional Sources Used</div>', unsafe_allow_html=True)
-            for item in source_summary:
-                st.markdown(f"""
-                <div style='background:#f9fafb;border:1px solid #f3f4f6;border-radius:6px;
-                     padding:6px 14px;margin-bottom:4px;font-family:Inter,sans-serif;
-                     font-size:11px;color:#6b7280;'>
-                    {item}
-                </div>
-                """, unsafe_allow_html=True)
-
-        stat.caption("💡 Generating sales strategy...")
-        sales_raw  = analyze_sales(corpus + extra_corpus[:5000], company_raw)
-        sales_data = safe_json(sales_raw)
-        prog.progress(100)
-
-        stat.empty()
-        prog.empty()
-        st.markdown("<div style='height:0px'></div>", unsafe_allow_html=True)
-
-        company_name = company_data.get("company_name", website)
-        pages_count  = len(pages)
-
-        entry = {
-            "domain":       active_domain,
-            "company":      company_name,
-            "score":        sales_data.get("overall_score", "Cold"),
-            "date":         now_gmt2().strftime("%d %b %Y %H:%M"),
-            "pages_count":  pages_count,
-            "company_data": company_data,
-            "sales_data":   sales_data,
-        }
-        save_history(entry)
-        st.session_state["loaded_report"] = entry
-        st.session_state["active_domain"] = active_domain
-        show_report = True
-
-    # ── REPORT ────────────────────────────────────────────────────────────────
-    if show_report:
-        score        = sales_data.get("overall_score", "Warm")
-        score_reason = sales_data.get("score_reason", "")
-        locs_list    = company_data.get("locations", [])
-        locs         = " · ".join(locs_list) if locs_list else "—"
-        emp          = company_data.get("employee_count") or "—"
-        conf         = company_data.get("confidence", "Medium")
-        conf_reason  = company_data.get("confidence_reason", "")
-
-        hc1, hc2 = st.columns([4, 1])
-        with hc1:
-            st.markdown(f"""
-            <div style='margin-bottom:6px;'>
-                <span style='font-family:Inter,sans-serif;font-size:26px;font-weight:700;color:#1a1a1a;'>{company_name}</span>
-                &nbsp;&nbsp;
-                <span class='score-badge {score_cls(score)}'>{score_emoji(score)} {score} Lead</span>
-            </div>
-            <div style='font-family:"Inter",sans-serif;font-size:11px;color:#6b7280;margin-bottom:6px;'>📍 {locs}</div>
-            <div style='font-family:"Inter",sans-serif;font-size:11px;color:#6b7280;margin-bottom:4px;'>
-                👥 {emp} &nbsp;·&nbsp; Confidence: <b style='color:#1a1a1a;'>{conf}</b>
-            </div>
-            <div style='font-size:12px;color:#9ca3af;font-style:italic;margin-bottom:6px;'>{conf_reason}</div>
-            <div style='font-size:14px;color:#4b5563;'>{score_reason}</div>
-            """, unsafe_allow_html=True)
-        with hc2:
-            st.markdown(f"<div style='text-align:right;font-family:\"Inter\",sans-serif;font-size:11px;color:#9ca3af;padding-top:8px;'>{now_gmt2().strftime('%d %b %Y %H:%M')}</div>", unsafe_allow_html=True)
-        st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-
-        m1, m2, m3, m4, m5 = st.columns(5)
-        m1.metric("People Identified", len(company_data.get("people", [])))
-        m2.metric("Projects Found",    len(company_data.get("projects", [])))
-        m3.metric("FEM Opportunities", len(sales_data.get("fem_opportunities", [])))
-        m4.metric("Open Roles",        len(company_data.get("open_roles", [])))
-        m5.metric("Pages Crawled",     pages_count)
-
-        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-        st.divider()
-
-        t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs([
-            "🏢  Company", "👥  People", "📐  Projects", "💡  FEM Opps",
-            "🎯  Strategy", "📋  Vacancies", "📧  Email", "📤  Export & Notes"
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Company","Domain","Lead Score","Score Label","Score Reason",
+        "Structural Relevance (/30)","FEM Need (/25)","Buying Signals (/20)","Accessibility (/15)","Competitive Landscape (/10)",
+        "Relevance Reason","FEM Need Reason","Buying Signals Reason","Accessibility Reason","Competitive Reason",
+        "Date Analysed","Pages Crawled",
+        "Locations","Employee Count","Founded","Confidence","Confidence Reason",
+        "Engineering Capabilities","Project Types","Software Mentioned",
+        "FEM Opportunities","Pain Points","Entry Point","Value Positioning",
+        "Likely Objections","Hiring Signals","Expansion Signals",
+        "Recommended Products","Product Reason","Opening Line",
+        "Pre-Meeting Mentions","Smart Questions","People Count","Projects Count","Open Roles Count"
+    ])
+    for h in all_history:
+        cd = h.get("company_data", {}) or {}
+        sd = h.get("sales_data", {}) or {}
+        sb = sd.get("score_breakdown", {}) or {}
+        # Handle both old format (number) and new format ({score, reason})
+        def sb_score(key):
+            val = sb.get(key, "")
+            if isinstance(val, dict):
+                return val.get("score", "")
+            return val
+        def sb_reason(key):
+            val = sb.get(key, "")
+            if isinstance(val, dict):
+                return val.get("reason", "")
+            return ""
+        writer.writerow([
+            h.get("company",""), h.get("domain",""),
+            sd.get("lead_score", h.get("lead_score", "")),
+            h.get("score",""),
+            sd.get("score_reason",""),
+            sb_score("structural_relevance"), sb_score("fem_need"), sb_score("buying_signals"), sb_score("accessibility"), sb_score("competitive_landscape"),
+            sb_reason("structural_relevance"), sb_reason("fem_need"), sb_reason("buying_signals"), sb_reason("accessibility"), sb_reason("competitive_landscape"),
+            h.get("date",""), h.get("pages_count",""),
+            " | ".join(cd.get("locations",[])), cd.get("employee_count",""),
+            cd.get("founded",""), cd.get("confidence",""), cd.get("confidence_reason",""),
+            " | ".join(cd.get("engineering_capabilities",[])),
+            " | ".join(cd.get("project_types",[])),
+            " | ".join(cd.get("software_mentioned",[])),
+            " | ".join(sd.get("fem_opportunities",[])),
+            " | ".join(sd.get("pain_points",[])),
+            sd.get("entry_point",""), sd.get("value_positioning",""),
+            " | ".join(sd.get("likely_objections",[])),
+            " | ".join(sd.get("hiring_signals",[])),
+            " | ".join(sd.get("expansion_signals",[])),
+            " | ".join(sd.get("recommended_products",[])),
+            sd.get("product_reason",""), sd.get("opening_line",""),
+            " | ".join(sd.get("pre_meeting_mention",[])),
+            " | ".join(sd.get("smart_questions",[])),
+            len(cd.get("people",[])), len(cd.get("projects",[])), len(cd.get("open_roles",[]))
         ])
 
-        # TAB 1 ── COMPANY
-        with t1:
-            ca, cb = st.columns([3, 2])
-            with ca:
-                st.markdown('<div class="sec-label">Overview</div>', unsafe_allow_html=True)
-                for b in company_data.get("overview", ["No data found"]):
-                    st.markdown(f'<div class="insight-card">→ {b}</div>', unsafe_allow_html=True)
-                st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-                st.markdown('<div class="sec-label">Engineering Capabilities</div>', unsafe_allow_html=True)
-                for b in company_data.get("engineering_capabilities", ["Not found"]):
-                    st.markdown(f"<div style='padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px;color:#374151;'>◆ {b}</div>", unsafe_allow_html=True)
-            with cb:
-                st.markdown('<div class="sec-label">Project Types</div>', unsafe_allow_html=True)
-                pts = company_data.get("project_types", [])
-                if pts:
-                    st.markdown(" ".join(f'<span class="pill-tag pill-red">{p}</span>' for p in pts), unsafe_allow_html=True)
-                else:
-                    st.caption("None detected")
-                st.markdown('<div class="sec-label" style="margin-top:16px;">Software & Tools Detected</div>', unsafe_allow_html=True)
-                sw = company_data.get("software_mentioned", [])
-                if sw:
-                    st.markdown(" ".join(f'<span class="pill-tag pill-amber">{s}</span>' for s in sw), unsafe_allow_html=True)
-                    st.caption("Existing tools — position MIDAS alongside or against these")
-                else:
-                    st.success("No competing software detected — clean opportunity to introduce MIDAS as first FEA tool")
+    return StreamingResponse(
+        io.BytesIO(output.getvalue().encode()),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="MIDAS_Intel_All_{datetime.now().strftime("%Y%m%d")}.csv"'}
+    )
 
-        # TAB 2 ── PEOPLE
-        with t2:
-            people = company_data.get("people", [])
-            if people:
-                tier_order = ["Owner","Founder","Director","Principal","Senior","Engineer","Graduate","Technician","Other"]
-                grouped = {}
-                for p in people:
-                    grouped.setdefault(p.get("tier","Other"), []).append(p)
-                tier_icons = {"Owner":"★","Founder":"★","Director":"◈","Principal":"◈","Senior":"◆","Engineer":"◇","Graduate":"◇","Technician":"◇","Other":"·"}
-                for tier in tier_order:
-                    tier_ppl = grouped.get(tier, [])
-                    if not tier_ppl:
+
+# ── IN-MEMORY JOB TRACKER ────────────────────────────────────────────────────
+# Tracks progress of running analysis jobs so the frontend can poll instead of WS
+
+from threading import Lock
+
+_jobs = {}  # domain -> {status, stage, message, progress, result, error}
+_jobs_lock = Lock()
+
+def _update_job(domain, **kwargs):
+    with _jobs_lock:
+        if domain not in _jobs:
+            _jobs[domain] = {}
+        _jobs[domain].update(kwargs)
+
+def _get_job(domain):
+    with _jobs_lock:
+        return _jobs.get(domain, {}).copy()
+
+def _clear_job(domain):
+    with _jobs_lock:
+        _jobs.pop(domain, None)
+
+
+@app.post("/api/analyse")
+def start_analysis(req: AnalyseRequest):
+    """Start analysis as a background job. Returns immediately.
+    Frontend polls GET /api/jobs/{domain} for progress, then GET /api/history/{domain} for results."""
+    url = req.url
+    if not url.startswith("http"):
+        url = "https://" + url
+    domain = extract_domain(url)
+
+    # Check if already running
+    existing_job = _get_job(domain)
+    if existing_job.get("status") == "running":
+        return {"status": "already_running", "domain": domain}
+
+    _update_job(domain, status="running", stage="starting", message="Starting...", progress=0, result=None, error=None)
+
+    def run_in_background():
+        def status_callback(stage, message, progress):
+            _update_job(domain, stage=stage, message=message, progress=progress)
+
+        entry, err = analyse_single_url(url, FIRECRAWL_KEY, status_callback=status_callback)
+        if entry:
+            _update_job(domain, status="complete", progress=100, message="Done!", result=entry, error=None)
+        else:
+            _update_job(domain, status="error", message=err or "Unknown error", error=err)
+
+    import threading
+    t = threading.Thread(target=run_in_background, daemon=True)
+    t.start()
+
+    return {"status": "started", "domain": domain}
+
+
+@app.get("/api/jobs/{domain}")
+def get_job_status(domain: str):
+    """Poll this endpoint for analysis progress. Returns the job result directly when complete."""
+    job = _get_job(domain)
+    if not job:
+        return {"status": "not_found", "domain": domain}
+    # When complete, include the full result so frontend doesn't need to fetch from history
+    return {"domain": domain, **job}
+
+
+# ── WEBSOCKET: SINGLE ANALYSIS WITH PROGRESS (kept for backward compat) ───
+
+@app.websocket("/ws/analyse")
+async def ws_analyse(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        data = await websocket.receive_json()
+        url = data.get("url", "")
+
+        if not url:
+            await websocket.send_json({"type": "error", "message": "Missing url"})
+            await websocket.close()
+            return
+
+        def status_callback(stage, message, progress):
+            status_queue.append({"type": "progress", "stage": stage, "message": message, "progress": progress})
+
+        status_queue = []
+
+        loop = asyncio.get_event_loop()
+
+        def run_analysis():
+            return analyse_single_url(url, FIRECRAWL_KEY, status_callback=status_callback)
+
+        # Start analysis in background
+        future = loop.run_in_executor(None, run_analysis)
+
+        # Send progress updates while waiting
+        while not future.done():
+            while status_queue:
+                msg = status_queue.pop(0)
+                await websocket.send_json(msg)
+            await asyncio.sleep(0.5)
+
+        # Send remaining progress messages
+        while status_queue:
+            msg = status_queue.pop(0)
+            await websocket.send_json(msg)
+
+        entry, error = future.result()
+        if entry:
+            await websocket.send_json({"type": "complete", "data": entry})
+        else:
+            await websocket.send_json({"type": "error", "message": error})
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        try:
+            await websocket.send_json({"type": "error", "message": str(e)})
+        except:
+            pass
+    finally:
+        try:
+            await websocket.close()
+        except:
+            pass
+
+
+# ── WEBSOCKET: BATCH ANALYSIS ───────────────────────────────────────────────
+
+@app.websocket("/ws/batch")
+async def ws_batch(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        data = await websocket.receive_json()
+        urls = data.get("urls", [])
+        recrawl = data.get("recrawl", False)
+
+        if not urls:
+            await websocket.send_json({"type": "error", "message": "Missing urls"})
+            await websocket.close()
+            return
+
+        # Deduplicate
+        seen = set()
+        unique_urls = []
+        for u in urls:
+            url = u if u.startswith("http") else "https://" + u
+            d = extract_domain(url)
+            if d and d not in seen:
+                seen.add(d)
+                unique_urls.append(url)
+
+        total = len(unique_urls)
+        completed = 0
+        succeeded = 0
+        skipped = 0
+        failed = 0
+
+        await websocket.send_json({"type": "batch_start", "total": total})
+
+        for idx, url in enumerate(unique_urls):
+            d = extract_domain(url)
+
+            try:
+                if not recrawl:
+                    existing = find_in_history(d)
+                    if existing:
+                        skipped += 1
+                        completed += 1
+                        await websocket.send_json({
+                            "type": "batch_item",
+                            "index": idx, "domain": d,
+                            "company": existing.get("company", d),
+                            "status": "skipped",
+                            "score": existing.get("score", "—"),
+                            "progress": completed / total * 100
+                        })
                         continue
-                    st.markdown(f'<div class="sec-label">{tier_icons.get(tier,"·")} {tier}s</div>', unsafe_allow_html=True)
-                    for p in tier_ppl:
-                        name = p.get("name", "")
-                        role = p.get("role", "")
-                        pc1, pc2, pc3 = st.columns([1, 6, 2])
-                        with pc1:
-                            st.markdown(f'<div class="av">{ini(name)}</div>', unsafe_allow_html=True)
-                        with pc2:
-                            st.markdown(f"<div style='font-weight:600;font-size:14px;padding-top:4px;'>{name}</div>", unsafe_allow_html=True)
-                            st.markdown(f"<div style='font-size:12px;color:#6b7280;font-family:\"Inter\",sans-serif;'>{role}</div>", unsafe_allow_html=True)
-                        with pc3:
-                            safe_name = name.replace("'", "%27")
-                            st.markdown(f'<a href="{li_url(safe_name)}" target="_blank" style="font-family:Inter,sans-serif;font-size:11px;color:#1a1a1a;text-decoration:none;border:1px solid rgba(200,71,30,0.4);padding:5px 12px;border-radius:4px;white-space:nowrap;">LinkedIn ↗</a>', unsafe_allow_html=True)
-                    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-            else:
-                st.info("No people identified. The site may not have a public team page.")
 
+                status_queue = []
 
-        # TAB 3 ── PROJECTS
-        with t3:
-            projects = company_data.get("projects", [])
-            if projects:
-                fem_proj = sum(1 for p in projects if p.get("fem_relevant"))
-                if fem_proj:
-                    st.success(f"🎯 {fem_proj} project(s) involved FEM/FEA level structural analysis — strong indicator of software need")
-        
-                st.markdown('<div class="sec-label">Delivered Projects</div>', unsafe_allow_html=True)
-        
-                for proj in projects:
-                    name        = (proj.get("name") or "Unknown Project").replace('"', '').replace("'", "")
-                    ptype       = (proj.get("type") or "Other").replace('"', '').replace("'", "")
-                    location    = (proj.get("location") or "").replace('"', '').replace("'", "")
-                    client      = (proj.get("client") or "").replace('"', '').replace("'", "")
-                    description = (proj.get("description") or "").replace('"', '').replace("'", "")
-                    fem         = proj.get("fem_relevant", False)
-        
-                    fem_html = ""
-                    if fem:
-                        fem_html = '<span style="font-family:Inter,sans-serif;font-size:10px;color:#1a1a1a;background:rgba(26,26,26,0.06);border:1px solid #fecaca;padding:3px 9px;border-radius:20px;white-space:nowrap;margin-left:8px;">FEM RELEVANT</span>'
-        
-                    type_colors = {
-                        "Bridge":         ("rgba(26,26,26,0.04)",  "rgba(26,26,26,0.2)",   "#1a1a1a"),
-                        "Metro":          ("rgba(0,100,200,0.05)",  "rgba(0,100,200,0.4)",  "#0055cc"),
-                        "Building":       ("rgba(0,168,90,0.05)",   "rgba(0,168,90,0.4)",   "#00784a"),
-                        "Infrastructure": ("rgba(200,140,0,0.05)",  "rgba(200,140,0,0.4)",  "#8a5e00"),
-                        "Residential":    ("rgba(120,80,200,0.05)", "rgba(120,80,200,0.4)", "#6040aa"),
-                        "Industrial":     ("rgba(80,80,80,0.05)",   "rgba(80,80,80,0.3)",   "#444444"),
-                        "Rail":           ("rgba(0,80,160,0.05)",   "rgba(0,80,160,0.4)",   "#005099"),
-                        "Justice":        ("rgba(160,0,80,0.05)",   "rgba(160,0,80,0.4)",   "#a00050"),
-                        "Defence":        ("rgba(60,80,60,0.05)",   "rgba(60,80,60,0.4)",   "#3c503c"),
-                        "Education":      ("rgba(0,140,140,0.05)",  "rgba(0,140,140,0.4)",  "#008080"),
-                        "Healthcare":     ("rgba(0,160,100,0.05)",  "rgba(0,160,100,0.4)",  "#00a064"),
-                        "Transport":      ("rgba(0,100,180,0.05)",  "rgba(0,100,180,0.4)",  "#0064b4"),
-                        "Energy":         ("rgba(200,120,0,0.05)",  "rgba(200,120,0,0.4)",  "#c87800"),
-                        "Mixed Use":      ("rgba(100,60,160,0.05)", "rgba(100,60,160,0.4)", "#643ca0"),
-                        "Other":          ("rgba(80,80,80,0.05)",   "rgba(80,80,80,0.3)",   "#555555"),
-                    }
-                    bg, border, color = type_colors.get(ptype, ("rgba(80,80,80,0.05)", "rgba(80,80,80,0.3)", "#555"))
-        
-                    meta_parts = []
-                    if location:
-                        meta_parts.append(f"📍 {location}")
-                    if client:
-                        meta_parts.append(f"👤 {client}")
-                    meta_html = "&nbsp;&nbsp;·&nbsp;&nbsp;".join(meta_parts)
-        
-                    card = (
-                        '<div style="background:white;border:1px solid #f3f4f6;border-radius:8px;padding:16px 20px;margin-bottom:10px;">'
-                        '<div style="display:flex;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">'
-                        f'<div style="font-weight:600;font-size:15px;color:#1a1a1a;">{name}</div>'
-                        + fem_html +
-                        f'<span style="font-family:Inter,sans-serif;font-size:10px;padding:3px 10px;'
-                        f'background:{bg};border:1px solid {border};border-radius:20px;color:{color};">'
-                        f'{ptype}</span>'
-                        '</div>'
-                        f'<div style="font-size:12px;color:#9ca3af;font-family:Inter,sans-serif;margin-bottom:6px;">{meta_html}</div>'
-                        f'<div style="font-size:13px;color:#4b5563;line-height:1.6;">{description}</div>'
-                        '</div>'
-                    )
-                    st.markdown(card, unsafe_allow_html=True)
-            else:
-                st.info("No projects found. The site may not have a public portfolio or case studies section.")
+                def make_callback(sq, _idx=idx, _d=d):
+                    def status_callback(stage, message, progress):
+                        sq.append({"type": "batch_progress", "index": _idx, "domain": _d, "stage": stage, "message": message, "item_progress": progress})
+                    return status_callback
 
+                loop = asyncio.get_event_loop()
+                callback = make_callback(status_queue)
+                future = loop.run_in_executor(None, lambda u=url, cb=callback: analyse_single_url(u, FIRECRAWL_KEY, status_callback=cb))
 
-        # TAB 4 ── FEM OPPS
-        with t4:
-            fa, fb = st.columns([3, 2])
-            with fa:
-                st.markdown('<div class="sec-label">FEM / FEA Opportunities</div>', unsafe_allow_html=True)
-                for i, opp in enumerate(sales_data.get("fem_opportunities", ["None identified"]), 1):
-                    st.markdown(f'<div class="insight-card"><span style=\'font-family:"Inter",sans-serif;font-size:10px;color:#1a1a1a;\'>0{i}</span><br>{opp}</div>', unsafe_allow_html=True)
-            with fb:
-                st.markdown('<div class="sec-label">Hiring Signals</div>', unsafe_allow_html=True)
-                for s in sales_data.get("hiring_signals", []):
-                    st.markdown(f'<div class="signal-card">▲ {s}</div>', unsafe_allow_html=True)
-                st.markdown('<div class="sec-label" style="margin-top:16px;">Expansion Signals</div>', unsafe_allow_html=True)
-                for s in sales_data.get("expansion_signals", []):
-                    st.markdown(f'<div class="signal-card">◆ {s}</div>', unsafe_allow_html=True)
+                while not future.done():
+                    # Send queued progress messages
+                    while status_queue:
+                        await websocket.send_json(status_queue.pop(0))
+                    # Send heartbeat ping to keep connection alive
+                    await websocket.send_json({"type": "heartbeat"})
+                    await asyncio.sleep(1)
 
-        # TAB 5 ── STRATEGY
-        with t5:
-            sa, sb = st.columns(2)
-            with sa:
-                st.markdown('<div class="sec-label">Entry Point</div>', unsafe_allow_html=True)
-                st.info(sales_data.get("entry_point", "Not determined"))
-                st.markdown('<div class="sec-label" style="margin-top:16px;">Value Positioning</div>', unsafe_allow_html=True)
-                st.success(sales_data.get("value_positioning", "Not determined"))
-                st.markdown('<div class="sec-label" style="margin-top:16px;">Likely Objections</div>', unsafe_allow_html=True)
-                for obj in sales_data.get("likely_objections", []):
-                    st.markdown(f'<div class="insight-card" style="border-left-color:#d97706;">⚠ {obj}</div>', unsafe_allow_html=True)
-                    
-                st.markdown('<div class="sec-label" style="margin-top:16px;">Recommended MIDAS Products</div>', unsafe_allow_html=True)
-                products = sales_data.get("recommended_products", [])
-                product_reason = sales_data.get("product_reason", "")
-                if products:
-                    pills = " ".join(f'<span class="pill-tag pill-red">{p}</span>' for p in products)
-                    st.markdown(f"<div style='margin-bottom:8px;'>{pills}</div>", unsafe_allow_html=True)
-                if product_reason:
-                    st.markdown(f"<div style='font-size:13px;color:#4b5563;'>{product_reason}</div>", unsafe_allow_html=True)
-                    
-            with sb:
-                st.markdown('<div class="sec-label">Pre-Meeting Cheat Sheet</div>', unsafe_allow_html=True)
-                st.markdown("<div style='font-size:11px;color:#6b7280;font-family:\"Inter\",sans-serif;letter-spacing:0.1em;margin-bottom:8px;'>3 THINGS TO MENTION</div>", unsafe_allow_html=True)
-                for m in sales_data.get("pre_meeting_mention", []):
-                    st.markdown(f"<div style='padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px;'>✓ {m}</div>", unsafe_allow_html=True)
-                st.markdown("<div style='font-size:11px;color:#6b7280;font-family:\"Inter\",sans-serif;letter-spacing:0.1em;margin:20px 0 8px;'>3 SMART QUESTIONS</div>", unsafe_allow_html=True)
-                for q in sales_data.get("smart_questions", []):
-                    st.markdown(f"<div style='padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px;'>? {q}</div>", unsafe_allow_html=True)
-                st.markdown('<div class="sec-label" style="margin-top:24px;">Opening Line</div>', unsafe_allow_html=True)
-                opening = sales_data.get("opening_line", "")
-                if opening:
-                    st.markdown(f'''<div style="background:white;border:1px solid #f3f4f6;border-left:3px solid #1a1a1a;border-radius:8px;padding:24px 28px;font-size:15px;line-height:1.8;font-style:italic;position:relative;">
-                        <span style="font-family:Inter,sans-serif;font-size:64px;font-weight:700;color:rgba(26,26,26,0.15);position:absolute;top:-8px;left:14px;line-height:1;">"</span>
-                        <span style="color:#374151;display:block;padding-left:20px;">{opening}</span>
-                    </div>''', unsafe_allow_html=True)
+                # Flush remaining progress messages
+                while status_queue:
+                    await websocket.send_json(status_queue.pop(0))
 
-        # TAB 6 ── VACANCIES
-        with t6:
-            roles = company_data.get("open_roles", [])
-            if roles:
-                fem_n = sum(1 for r in roles if r.get("fem_mentioned"))
-                if fem_n:
-                    st.success(f"🎯 {fem_n} role(s) explicitly mention FEM/FEA — strong buying signal")
-                st.markdown('<div class="sec-label">Open Roles</div>', unsafe_allow_html=True)
-                for role in roles:
-                    title     = role.get("title", "Unknown role")
-                    skills    = role.get("skills", [])
-                    fem       = role.get("fem_mentioned", False)
-                    fem_html  = '<span style="font-family:Inter,sans-serif;font-size:10px;color:#1a1a1a;background:rgba(26,26,26,0.06);border:1px solid #fecaca;padding:3px 9px;border-radius:20px;white-space:nowrap;">FEM MENTIONED</span>' if fem else ""
-                    pills_html = "".join(f'<span style="font-family:Inter,sans-serif;font-size:10px;padding:3px 10px;border:1px solid #e5e7eb;border-radius:20px;color:#6b7280;background:#fafafa;margin:2px;display:inline-block;">{s}</span>' for s in skills) if skills else '<span style="font-size:12px;color:#9ca3af;">No skills listed</span>'
-                    st.markdown(
-                        f'<div style="background:white;border:1px solid #f3f4f6;border-radius:8px;padding:16px 20px;margin-bottom:10px;">'
-                        f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'
-                        f'<div style="font-weight:600;font-size:15px;color:#1a1a1a;">{title}</div>{fem_html}</div>'
-                        f'<div style="display:flex;flex-wrap:wrap;gap:6px;">{pills_html}</div></div>',
-                        unsafe_allow_html=True
-                    )
-            else:
-                st.info("No relevant vacancies found on this website.")
+                entry, error = future.result()
+                completed += 1
 
-        # TAB 7 ── EMAIL
-        with t7:
-            st.markdown('<div class="sec-label">Cold Outreach Email</div>', unsafe_allow_html=True)
-            st.markdown("<div style='background:white;border:1px solid #f3f4f6;border-radius:8px;padding:16px 20px;margin-bottom:16px;font-size:13px;color:#6b7280;'>Generate a personalised cold email based on the company intelligence. Edit before sending.</div>", unsafe_allow_html=True)
+                if entry:
+                    succeeded += 1
+                    await websocket.send_json({
+                        "type": "batch_item",
+                        "index": idx, "domain": d,
+                        "company": entry.get("company", d),
+                        "status": "done",
+                        "score": entry.get("score", "Cold"),
+                        "progress": completed / total * 100
+                    })
+                else:
+                    failed += 1
+                    await websocket.send_json({
+                        "type": "batch_item",
+                        "index": idx, "domain": d,
+                        "company": d,
+                        "status": "failed",
+                        "error": error,
+                        "progress": completed / total * 100
+                    })
 
-            current_domain = active_domain
-            if st.session_state.get("email_domain") != current_domain:
-                st.session_state["generated_email"] = ""
-                st.session_state["email_domain"] = current_domain
+            except Exception as company_err:
+                # Single company failure shouldn't kill the entire batch
+                failed += 1
+                completed += 1
+                try:
+                    await websocket.send_json({
+                        "type": "batch_item",
+                        "index": idx, "domain": d,
+                        "company": d,
+                        "status": "failed",
+                        "error": str(company_err),
+                        "progress": completed / total * 100
+                    })
+                except:
+                    break  # WS is dead, stop the batch
 
-            if st.button("✉ Generate Email Draft", key="gen_email_btn"):
-                st.session_state["generated_email"] = generate_email(company_data, sales_data)
+        await websocket.send_json({
+            "type": "batch_complete",
+            "succeeded": succeeded,
+            "skipped": skipped,
+            "failed": failed,
+            "total": total
+        })
 
-            if st.session_state["generated_email"]:
-                lines = st.session_state["generated_email"].strip().split("\n")
-                subject = ""
-                body_lines = []
-                for line in lines:
-                    if line.startswith("Subject:"):
-                        subject = line.replace("Subject:", "").strip()
-                    else:
-                        body_lines.append(line)
-                body = "\n".join(body_lines).strip()
-
-                if subject:
-                    st.markdown("<div style='font-family:Inter,sans-serif;font-size:11px;color:#6b7280;margin-bottom:4px;letter-spacing:0.1em;'>SUBJECT LINE</div>", unsafe_allow_html=True)
-                    st.markdown(f"<div style='background:white;border:1px solid #f3f4f6;border-radius:6px;padding:10px 14px;font-size:14px;font-weight:600;color:#1a1a1a;margin-bottom:16px;'>{subject}</div>", unsafe_allow_html=True)
-
-                st.markdown("<div style='font-family:Inter,sans-serif;font-size:11px;color:#6b7280;margin-bottom:4px;letter-spacing:0.1em;'>EMAIL BODY — edit below before copying</div>", unsafe_allow_html=True)
-                edited_email = st.text_area("", value=body, height=320, label_visibility="collapsed")
-                full_copy = f"Subject: {subject}\n\n{edited_email}" if subject else edited_email
-                st.download_button("📋 Download as .txt", data=full_copy, file_name=f"MIDAS_Email_{company_name.replace(' ','_')}.txt", mime="text/plain")
-
-        # TAB 8 ── EXPORT & NOTES
-        with t8:
-            ea, eb = st.columns([1, 1])
-            with ea:
-                st.markdown('<div class="sec-label">PDF Export</div>', unsafe_allow_html=True)
-                st.markdown("<div style='background:white;border:1px solid #f3f4f6;border-radius:8px;padding:20px 24px;margin-bottom:16px;'><div style='font-weight:600;font-size:15px;color:#1a1a1a;margin-bottom:6px;'>PDF Sales Dossier</div><div style='font-size:13px;color:#6b7280;'>Ready to print or share before a meeting.</div></div>", unsafe_allow_html=True)
-                pdf_bytes = export_pdf(company_name, company_data, sales_data)
-                fname = f"MIDAS_Intel_{company_name.replace(' ','_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
-                st.download_button("📥  Download PDF", data=pdf_bytes, file_name=fname, mime="application/pdf")
-
-            with eb:
-                st.markdown('<div class="sec-label">Rep Notes</div>', unsafe_allow_html=True)
-                existing_note = get_note(active_domain)
-                note_text     = existing_note.get("text", "")
-                note_updated  = existing_note.get("updated", "")
-
-                if note_updated:
-                    st.caption(f"Last saved: {note_updated}")
-
-                new_note = st.text_area(
-                    "",
-                    value=note_text,
-                    placeholder="Add your notes — call outcome, follow-up date, key contacts spoken to...",
-                    height=200,
-                    label_visibility="collapsed"
-                )
-                if st.button("💾 Save Notes", use_container_width=True):
-                    save_note(active_domain, new_note)
-                    st.success("✓ Saved to Supabase")
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        try:
+            await websocket.send_json({"type": "error", "message": str(e)})
+        except:
+            pass
+    finally:
+        try:
+            await websocket.close()
+        except:
+            pass

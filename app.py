@@ -10,6 +10,7 @@ import csv
 import json
 import time
 import asyncio
+import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -90,6 +91,9 @@ def load_history():
 
 def save_history(entry):
     try:
+        cd = entry.get("company_data", {}) or {}
+        cd["locations"] = clean_locations(cd.get("locations", []))
+        entry["company_data"] = cd
         supabase.table("midas_history").upsert({
             "domain":       entry["domain"],
             "company":      entry["company"],
@@ -101,6 +105,15 @@ def save_history(entry):
         }, on_conflict="domain").execute()
     except Exception as e:
         print(f"Could not save history: {e}")
+
+def sanitize_history_entry(entry):
+    if not entry:
+        return entry
+    cd = entry.get("company_data", {}) or {}
+    if isinstance(cd, dict):
+        cd["locations"] = clean_locations(cd.get("locations", []))
+        entry["company_data"] = cd
+    return entry
 
 def find_in_history(domain):
     try:
@@ -182,6 +195,148 @@ def extract_employee_count_from_text(text):
             count = re.sub(r"\s*[-–]\s*", "-", match.group(1).strip())
             return f"{count} employees"
     return ""
+
+def employee_count_floor(employee_count):
+    nums = re.findall(r"[\d,]+", str(employee_count or "").replace(",", ""))
+    return int(nums[0]) if nums else 0
+
+def extract_locations_from_text(text):
+    if not text:
+        return []
+    normalized = re.sub(r"\s+", " ", text)
+    locations = []
+    seen = set()
+    location_stopwords = {
+        "a", "an", "the", "this", "that", "these", "those", "and", "or", "to", "from", "in",
+        "on", "at", "of", "for", "with", "including", "include", "set",
+    }
+    junk_location_terms = (
+        r"set to", r"companies house", r"include", r"company", r"officer",
+        r"appointed", r"registered", r"jurisdiction", r"courts?", r"certification",
+        r"exclusive", r"terms", r"privacy", r"policy", r"cookies?", r"training",
+    )
+
+    def add_location(value):
+        value = re.sub(r"\s+", " ", value or "").strip(" ,.-")
+        if not value:
+            return
+        first_token = re.split(r"[\s,]+", value.lower(), maxsplit=1)[0]
+        if first_token in location_stopwords:
+            return
+        if re.search(r"\b(" + "|".join(junk_location_terms) + r")\b", value, re.IGNORECASE):
+            return
+        if value.lower().startswith(("the ", "to ", "and ", "or ")):
+            return
+        first_part = value.split(",", 1)[0].strip()
+        if len(first_part.split()) > 3:
+            return
+        key = value.lower()
+        if key not in seen:
+            seen.add(key)
+            locations.append(value)
+
+    uk_postcode = r"[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}"
+    address_lines = [line.strip() for line in re.split(r"[\r\n]+", text) if line.strip()]
+    for idx, line in enumerate(address_lines):
+        if not re.search(uk_postcode, line, re.IGNORECASE):
+            continue
+        window = " ".join(address_lines[max(0, idx - 3):idx + 1])
+        line_match = re.search(
+            rf"\b([A-Za-z' .-]{{2,35}})\s+([A-Za-z' .-]{{2,35}})\s+"
+            rf"(?:United Kingdom|UK|England|Scotland|Wales)\s*{uk_postcode}",
+            window,
+            re.IGNORECASE,
+        )
+        if line_match:
+            town = line_match.group(1).strip().title()
+            county = line_match.group(2).strip().title()
+            if not re.search(r"\b(road|street|lane|avenue|drive|close|way|place|park|court|yard)\b", town, re.IGNORECASE):
+                add_location(f"{town}, {county}, United Kingdom")
+
+    uk_street_address_pattern = re.compile(
+        rf"\d{{1,5}}\s+[A-Za-z0-9' .-]+?\b(?:road|street|lane|avenue|drive|close|way|place|park|court|yard)\b\s+"
+        rf"([A-Za-z' .-]{{2,35}}?)\s+"
+        rf"([A-Za-z' .-]{{2,35}}?)\s+"
+        rf"(?:United Kingdom|UK|England|Scotland|Wales)\s*{uk_postcode}",
+        re.IGNORECASE,
+    )
+    for match in uk_street_address_pattern.finditer(normalized):
+        town = (match.group(1) or "").strip().title()
+        county = (match.group(2) or "").strip().title()
+        add_location(f"{town}, {county}, United Kingdom")
+
+    address_pattern = re.compile(
+        rf"(\d{{1,5}}\s+[A-Za-z0-9' .-]+?\s+"
+        rf"([A-Z][A-Za-z' .-]{{2,40}})\s+"
+        rf"([A-Z][A-Za-z' .-]{{2,40}})?\s*"
+        rf"(?:United Kingdom|UK|England|Scotland|Wales)?\s*{uk_postcode})",
+        re.IGNORECASE,
+    )
+    for match in address_pattern.finditer(normalized):
+        town = (match.group(2) or "").strip()
+        county = (match.group(3) or "").strip()
+        if re.search(r"\b(road|street|lane|avenue|drive|close|way|place|park|court|yard)\b", town, re.IGNORECASE):
+            continue
+        if county and not re.search(r"united kingdom|england|scotland|wales|uk", county, re.IGNORECASE):
+            add_location(f"{town}, {county.title()}, United Kingdom")
+        else:
+            add_location(f"{town}, United Kingdom")
+
+    return locations[:5]
+
+def direct_homepage_text(url):
+    try:
+        resp = http.get(url, headers={"User-Agent": "Mozilla/5.0", "Accept-Language": "en-GB,en;q=0.9"}, timeout=12)
+        soup = BeautifulSoup(resp.text, "html.parser")
+        for tag in soup(["script", "style", "noscript", "iframe"]):
+            tag.decompose()
+        return soup.get_text(separator="\n", strip=True)
+    except:
+        return ""
+
+def clean_locations(locations):
+    cleaned = []
+    seen = set()
+    location_stopwords = {"a", "an", "the", "this", "that", "these", "those", "and", "or", "to", "from", "in", "on", "at", "of", "for", "with"}
+    junk_re = re.compile(
+        r"(set\s*to|companies\s*house|include|company|officer|appointed|registered|"
+        r"jurisdiction|jurisdic\s*tion|courts?|certification|exclusive|terms|privacy|"
+        r"policy|cookies?|training|safety\s+certification|tunnelling\s+safety)",
+        re.IGNORECASE,
+    )
+    for loc in locations or []:
+        value = re.sub(r"\s+", " ", str(loc or "")).strip(" ,.-")
+        if not value:
+            continue
+        first_token = re.split(r"[\s,]+", value.lower(), maxsplit=1)[0]
+        if first_token in location_stopwords:
+            continue
+        if junk_re.search(value):
+            continue
+        if value.lower().startswith(("the ", "to ", "and ", "or ")):
+            continue
+        if len(value) > 80:
+            continue
+        first_part = value.split(",", 1)[0].strip()
+        if len(first_part.split()) > 3:
+            continue
+        if re.search(r"\bunited kingdom\b", value, re.IGNORECASE) and not re.search(r"\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b", value, re.IGNORECASE):
+            # Only keep UK country locations when they are a normal city/county label,
+            # not a prose fragment that happened to end near "United Kingdom".
+            allowed_uk_places = {
+                "london", "manchester", "birmingham", "leeds", "bristol", "edinburgh",
+                "glasgow", "liverpool", "tonbridge", "kent", "cardiff", "nottingham",
+                "sheffield", "newcastle", "cambridge", "oxford", "reading", "york",
+            }
+            place_words = {p.strip().lower() for p in re.split(r"[,/]", value) if p.strip()}
+            first_words = set(first_part.lower().split())
+            if not (place_words | first_words) & allowed_uk_places:
+                continue
+        key = value.lower()
+        if key not in seen:
+            seen.add(key)
+            cleaned.append(value)
+    return cleaned[:5]
 
 
 # ── CRAWLING ─────────────────────────────────────────────────────────────────
@@ -859,6 +1014,7 @@ Website excerpt: {corpus[:4000]}""",
 
     sales_data = safe_json(raw)
     sig = sales_data.get("signals", {})
+    original_sig = dict(sig)
 
     # Repair conservative/incorrect LLM scoring signals with facts already extracted
     # from the company profile. The LLM is useful for strategy text, but it can miss
@@ -898,12 +1054,29 @@ Website excerpt: {corpus[:4000]}""",
         corpus[:8000],
     )
 
+    # Build a COMPANY-ONLY blob (excludes enrichment corpus which has noise from other companies)
+    company_profile_blob = text_join(
+        company_data.get("company_name"),
+        company_data.get("tagline"),
+        company_data.get("overview"),
+        company_data.get("engineering_capabilities"),
+        company_data.get("project_types"),
+    )
+
     def has_any(terms, blob=company_blob):
         return any(term in blob for term in terms)
 
+    def profile_has_any(terms):
+        """Check only the company's own profile, not enrichment sources."""
+        return any(term in company_profile_blob for term in terms)
+
     bridge_terms = ("bridge", "viaduct", "flyover", "highway", "railway", "rail", "transport infrastructure")
     building_terms = ("building", "residential", "commercial", "mixed-use", "mixed use", "high-rise", "housing")
-    geotech_terms = ("geotechnical", "ground engineering", "soil", "slope", "retaining", "basement", "excavation", "earthworks")
+    geotech_terms = ("geotechnical", "ground engineering", "soil mechanics", "soil-structure",
+                     "slope stability", "retaining wall design", "deep excavation",
+                     "geotechnical design", "geotechnical analysis", "ground investigation",
+                     "geotechnical investigation", "borehole", "triaxial", "consolidation",
+                     "bearing capacity", "earth pressure", "earthworks design")
     tunnel_terms = ("tunnel", "tunnelling", "underground", "metro")
     foundation_terms = ("foundation", "piling", "pile", "underpinning")
     dam_terms = ("dam", "reservoir", "embankment")
@@ -913,8 +1086,46 @@ Website excerpt: {corpus[:4000]}""",
         "civil engineer", "civil engineering", "temporary works", "steelwork",
         "reinforced concrete", "rc frame", "frame design", "facade engineering",
     )
+    survey_terms = (
+        "land survey", "land surveying", "topographical survey", "topographic survey",
+        "measured building survey", "utility survey", "laser scanning", "3d scanning",
+        "drone survey", "uav survey", "aerial survey", "geomatics", "geospatial",
+        "mapping", "setting out", "site survey", "boundary survey", "as-built survey",
+        "surveying services", "survey company", "surveyors",
+        "geodetic", "geodesy", "geodetske", "geoprostorne", "gnss", "total station",
+        "cadastral", "cadastre", "land registry", "staking out", "deformation monitoring",
+    )
+    geodetic_terms_strict = ("geodetic", "geodesy", "geodetske", "geoprostorne")
+    civil_design_no_fem_terms = (
+        "highway design", "highways design", "road design", "roads design",
+        "alignment design", "horizontal alignment", "vertical alignment",
+        "highway alignment", "road alignment", "route alignment",
+        "corridor design", "junction design", "roundabout design",
+        "road geometry", "geometric design", "civil 3d corridor",
+        "road drainage", "highway drainage", "s278", "section 278",
+        "s38", "section 38", "pavement design",
+    )
+    analysis_design_terms = (
+        "structural design", "structural analysis", "finite element",
+        "geotechnical design", "ground engineering", "soil-structure", "slope stability",
+        "foundation design", "piling design", "retaining wall design", "tunnel design",
+        "bridge design", "seismic design", "nonlinear analysis", "non-linear analysis",
+    )
     non_engineering_terms = ("marketing agency", "law firm", "accountancy", "restaurant", "retail shop")
 
+    # Survey/geodetic detection uses PROFILE-ONLY blob to avoid enrichment noise
+    # Also: "fea" and "fem" removed from analysis_design_terms (too short, false positive on "female" etc.)
+    # Check analysis terms against profile only, not the full enrichment corpus
+    profile_has_structural = profile_has_any(analysis_design_terms)
+    is_geodetic_company = profile_has_any(geodetic_terms_strict)
+    is_survey_company = profile_has_any(survey_terms)
+
+    # Geodetic/survey companies are Cold EVEN IF enrichment sources mention structural terms
+    # (because enrichment might mention projects they surveyed, not projects they designed)
+    survey_only = is_survey_company and not profile_has_structural
+    geodetic_only = is_geodetic_company and not profile_has_structural
+    civil_design_no_fem_only = has_any(civil_design_no_fem_terms) and not profile_has_structural
+    non_fem_civil_only = survey_only or geodetic_only or civil_design_no_fem_only
     type_blob = " ".join(project_types)
     has_bridges = has_any(bridge_terms) or "bridge" in type_blob
     has_buildings = has_any(building_terms) or any(t in type_blob for t in ("building", "residential", "industrial"))
@@ -923,6 +1134,8 @@ Website excerpt: {corpus[:4000]}""",
     has_foundations = has_any(foundation_terms) or "foundation" in type_blob
     has_dams = has_any(dam_terms) or "dam" in type_blob
     has_marine = has_any(marine_terms)
+    if non_fem_civil_only:
+        has_bridges = has_buildings = has_geotech = has_tunnels = has_foundations = has_dams = has_marine = False
 
     detected_flags = {
         "has_bridges": has_bridges,
@@ -936,8 +1149,20 @@ Website excerpt: {corpus[:4000]}""",
     for key, detected in detected_flags.items():
         if detected:
             sig[key] = True
+    detected_labels = [
+        label for key, label in (
+            ("has_bridges", "bridge/infrastructure work"),
+            ("has_buildings", "building/general structural work"),
+            ("has_geotech", "geotechnical or retaining works"),
+            ("has_tunnels", "tunnel/underground work"),
+            ("has_foundations", "foundation or piling work"),
+            ("has_dams", "dam/reservoir/embankment work"),
+            ("has_marine", "marine/coastal work"),
+        )
+        if sig.get(key)
+    ]
 
-    fem_project_count = sum(1 for p in projects if p.get("fem_relevant"))
+    fem_project_count = 0 if non_fem_civil_only else sum(1 for p in projects if p.get("fem_relevant"))
     engineering_project_count = sum(1 for detected in detected_flags.values() if detected)
     if projects and not sig.get("project_count_on_site"):
         sig["project_count_on_site"] = len(projects)
@@ -948,13 +1173,31 @@ Website excerpt: {corpus[:4000]}""",
         "soil analysis", "slope stability", "construction stage", "load analysis",
     )
     fem_from_text = has_any(explicit_fem_terms)
+    fem_evidence_items = []
+    if fem_project_count:
+        fem_evidence_items.append(f"{fem_project_count} FEM-relevant project(s)")
+    if detected_labels:
+        fem_evidence_items.extend(detected_labels[:3])
+    if fem_from_text:
+        fem_evidence_items.insert(0, "analysis/FEM language found")
     complex_terms = (
         "bridge", "tunnel", "geotechnical", "foundation", "retaining", "dam",
         "seismic", "nonlinear", "non-linear", "temporary works", "rail",
         "metro", "underground", "high-rise", "deep excavation",
     )
 
-    if fem_from_text:
+    if non_fem_civil_only:
+        sig["core_service"] = "civil_no_structural"
+        sig["fem_evidence"] = "no_fem"
+        sig["project_complexity"] = "simple"
+        for key in ("has_bridges","has_buildings","has_geotech","has_tunnels","has_foundations","has_dams","has_marine"):
+            sig[key] = False
+        detected_labels = []
+        if survey_only:
+            fem_evidence_items = ["surveying/geospatial services without structural or geotechnical analysis evidence"]
+        else:
+            fem_evidence_items = ["highway/alignment design without structural, geotechnical, or FEM analysis evidence"]
+    elif fem_from_text:
         sig["fem_evidence"] = "explicit_fem_mentioned"
     elif fem_project_count or has_bridges or has_geotech or has_tunnels or has_foundations or has_dams:
         if sig.get("fem_evidence") in (None, "", "no_fem", "possible_fem"):
@@ -977,7 +1220,7 @@ Website excerpt: {corpus[:4000]}""",
     elif has_bridges or has_buildings or has_any(structural_terms):
         if sig.get("core_service") in (None, "", "not_engineering", "civil_no_structural"):
             sig["core_service"] = "structural_only"
-    elif has_any(("civil engineering", "infrastructure", "engineering consultancy")) and not has_any(non_engineering_terms):
+    elif has_any(("civil engineering", "infrastructure", "engineering consultancy")) and not has_any(non_engineering_terms) and not has_any(survey_terms):
         if sig.get("core_service") in (None, "", "not_engineering"):
             sig["core_service"] = "multi_discipline_with_structural"
 
@@ -1013,6 +1256,23 @@ Website excerpt: {corpus[:4000]}""",
                 sig["company_size"] = "medium_51_200"
             else:
                 sig["company_size"] = "large_201_plus"
+
+    correction_keys = (
+        "core_service", "fem_evidence", "project_complexity", "project_count_on_site",
+        "competitor_software", "people_found_count", "decision_makers_found", "company_size",
+        "has_bridges", "has_buildings", "has_geotech", "has_tunnels",
+        "has_foundations", "has_dams", "has_marine",
+    )
+    signal_corrections = []
+    for key in correction_keys:
+        before = original_sig.get(key)
+        after = sig.get(key)
+        if before != after and after not in (None, "", False):
+            signal_corrections.append({
+                "field": key,
+                "from": before,
+                "to": after,
+            })
 
     # ══ DETERMINISTIC SCORING — Python calculates, LLM only provides facts ══
 
@@ -1063,23 +1323,41 @@ Website excerpt: {corpus[:4000]}""",
 
     # Total
     lead_score = max(0, min(100, rel + fem + buy + acc + cmp))
+    if non_fem_civil_only:
+        lead_score = min(lead_score, 25)
     overall = "Hot" if lead_score >= 70 else ("Warm" if lead_score >= 40 else "Cold")
+    evidence_summary = "; ".join(dict.fromkeys(fem_evidence_items or detected_labels)) or "no strong structural/FEM evidence detected"
+    structural_reason = f"Core: {core.replace('_',' ')}"
+    if detected_labels:
+        structural_reason += f"; evidence: {', '.join(detected_labels[:4])}"
+    else:
+        structural_reason += f"; {sum(proj_flags)} project type(s)"
+    fem_reason = f"FEM evidence: {fem_ev.replace('_',' ')}, complexity: {sig.get('project_complexity','unknown')}"
+    if fem_evidence_items:
+        fem_reason += f"; based on {', '.join(dict.fromkeys(fem_evidence_items[:4]))}"
 
     # Build breakdown
     sales_data["lead_score"] = lead_score
     sales_data["score_breakdown"] = {
-        "structural_relevance": {"score": rel, "reason": f"Core: {core.replace('_',' ')}, {sum(proj_flags)} project type(s)"},
-        "fem_need": {"score": fem, "reason": f"FEM evidence: {fem_ev.replace('_',' ')}, complexity: {sig.get('project_complexity','unknown')}"},
+        "structural_relevance": {"score": rel, "reason": structural_reason},
+        "fem_need": {"score": fem, "reason": fem_reason},
         "buying_signals": {"score": buy, "reason": f"Hiring structural: {sig.get('hiring_structural',False)}, projects: {pc}, expanding: {sig.get('expanding_offices',False)}"},
         "accessibility": {"score": acc, "reason": f"{ppl} people, decision makers: {sig.get('decision_makers_found',False)}, size: {sz.replace('_',' ')}"},
         "competitive_landscape": {"score": cmp, "reason": f"Software: {sig.get('competitor_software','unknown').replace('_',' ')}" + (f" ({', '.join(sig.get('competitor_names',[]))})" if sig.get('competitor_names') else "")}
     }
+    sales_data["score_evidence"] = list(dict.fromkeys(fem_evidence_items or detected_labels))
+    sales_data["signal_corrections"] = signal_corrections
     sales_data["overall_score"] = overall
-    sales_data["score_reason"] = f"Score {lead_score}/100 ({overall}). Core: {core.replace('_',' ')}, FEM: {fem_ev.replace('_',' ')}, {ppl} people, software: {sig.get('competitor_software','unknown').replace('_',' ')}."
+    sales_data["score_reason"] = f"Score {lead_score}/100 ({overall}). {core.replace('_',' ').title()} with {fem_ev.replace('_',' ')}. Evidence: {evidence_summary}. {ppl} people found; software: {sig.get('competitor_software','unknown').replace('_',' ')}."
 
-    if lead_score < 30:
+    if non_fem_civil_only or lead_score < 30:
         sales_data["recommended_products"] = []
         sales_data["fem_opportunities"] = ["No direct FEM/FEA opportunities identified"]
+        if non_fem_civil_only:
+            if survey_only or geodetic_only:
+                sales_data["score_reason"] = f"Score {lead_score}/100 ({overall}). Surveying/geodetic company with no structural, geotechnical design, or FEM analysis evidence."
+            else:
+                sales_data["score_reason"] = f"Score {lead_score}/100 ({overall}). Highway/alignment design company with no structural, geotechnical design, or FEM analysis evidence."
 
     sales_data.pop("signals", None)
     return json.dumps(sales_data)
@@ -1358,7 +1636,7 @@ def quick_extract_company_name(pages, domain):
 
 # ── FULL ANALYSIS PIPELINE ───────────────────────────────────────────────────
 
-def analyse_single_url(website_url, firecrawl_key, status_callback=None):
+def analyse_single_url(website_url, firecrawl_key, status_callback=None, should_save=None):
     """Run full analysis pipeline for one URL. Returns (entry_dict, error_str).
     
     Optimised pipeline (parallel where possible):
@@ -1411,6 +1689,7 @@ def analyse_single_url(website_url, firecrawl_key, status_callback=None):
             status_callback("analysing", f"Analysing {_domain}...", 30)
 
         # ── STEP 2: AI analysis + enrichment IN PARALLEL ──
+        raw_site_text = "\n".join((p.get("markdown", "") or "") for p in pages)
         corpus = build_corpus(pages)
         _quick_name = quick_extract_company_name(pages, _domain)
 
@@ -1473,17 +1752,18 @@ def analyse_single_url(website_url, firecrawl_key, status_callback=None):
             _company_data["employee_count"] = gd_emp
             _emp_from_structured = True
 
+        rejected_employee_count = ""
+
         # Sanity check: if the website only has a handful of people listed
         # but the employee count says 500+, it's almost certainly a wrong-company match.
         # Small engineering consultancies don't have 500+ staff with only 3-5 people on their site.
         if _emp_from_structured:
             people_on_site = len(_company_data.get("people", []))
             emp_str = _company_data.get("employee_count", "")
-            # Extract the first number from the employee string for comparison
-            emp_nums = re.findall(r'[\d,]+', emp_str.replace(",", ""))
-            first_num = int(emp_nums[0]) if emp_nums else 0
+            first_num = employee_count_floor(emp_str)
             if people_on_site <= 10 and first_num >= 200:
                 # Very likely wrong company — clear the count, let DeepSeek decide from site content
+                rejected_employee_count = _company_data.get("employee_count", "")
                 _company_data["employee_count"] = ""
                 _emp_from_structured = False
 
@@ -1542,8 +1822,24 @@ def analyse_single_url(website_url, firecrawl_key, status_callback=None):
 
         if not _company_data.get("employee_count"):
             fb_emp = extract_employee_count_from_text(_extra_corpus)
-            if fb_emp:
+            if fb_emp and fb_emp != rejected_employee_count:
                 _company_data["employee_count"] = fb_emp
+        final_emp_floor = employee_count_floor(_company_data.get("employee_count"))
+        if len(_company_data.get("people", [])) <= 10 and final_emp_floor >= 200:
+            _company_data["employee_count"] = ""
+
+        _company_data["locations"] = clean_locations(_company_data.get("locations", []))
+        site_locations = clean_locations(extract_locations_from_text(raw_site_text or corpus))
+        if not site_locations:
+            site_locations = clean_locations(extract_locations_from_text(direct_homepage_text(website_url)))
+        if site_locations:
+            _company_data["locations"] = site_locations
+        else:
+            _company_data["locations"] = clean_locations(_company_data.get("locations", []))
+            if not _company_data.get("locations"):
+                fallback_locations = clean_locations(extract_locations_from_text(_extra_corpus))
+                if fallback_locations:
+                    _company_data["locations"] = fallback_locations
 
         # ── STEP 4: Sales strategy ──
         if status_callback:
@@ -1565,7 +1861,8 @@ def analyse_single_url(website_url, firecrawl_key, status_callback=None):
             "company_data": _company_data,
             "sales_data":   _sales_data,
         }
-        save_history(_entry)
+        if should_save is None or should_save():
+            save_history(_entry)
 
         if status_callback:
             status_callback("complete", "Done!", 100)
@@ -1765,6 +2062,7 @@ def get_history(search: Optional[str] = None):
         history = [h for h in history if search_lower in h.get("company","").lower() or search_lower in h.get("domain","").lower()]
     # Add days_ago to each entry
     for h in history:
+        sanitize_history_entry(h)
         h["days_ago"] = days_ago(h.get("date", ""))
     return {"history": history}
 
@@ -1774,6 +2072,7 @@ def get_report(domain: str):
     entry = find_in_history(domain)
     if not entry:
         raise HTTPException(status_code=404, detail="Report not found")
+    sanitize_history_entry(entry)
     entry["days_ago"] = days_ago(entry.get("date", ""))
     return entry
 
@@ -1910,14 +2209,22 @@ def export_csv_route():
 
 from threading import Lock
 
-_jobs = {}  # domain -> {status, stage, message, progress, result, error}
+_jobs = {}  # domain -> {job_id, status, stage, message, progress, result, error}
 _jobs_lock = Lock()
 
-def _update_job(domain, **kwargs):
+def _update_job(domain, job_id=None, **kwargs):
     with _jobs_lock:
         if domain not in _jobs:
             _jobs[domain] = {}
+        current_job_id = _jobs[domain].get("job_id")
+        if job_id is not None and current_job_id is not None and current_job_id != job_id:
+            return False
         _jobs[domain].update(kwargs)
+        return True
+
+def _start_job(domain, job_id, **kwargs):
+    with _jobs_lock:
+        _jobs[domain] = {"job_id": job_id, **kwargs}
 
 def _get_job(domain):
     with _jobs_lock:
@@ -1937,28 +2244,32 @@ def start_analysis(req: AnalyseRequest):
         url = "https://" + url
     domain = extract_domain(url)
 
-    # Check if already running
-    existing_job = _get_job(domain)
-    if existing_job.get("status") == "running":
-        return {"status": "already_running", "domain": domain}
+    delete_from_history(domain)
 
-    _update_job(domain, status="running", stage="starting", message="Starting...", progress=0, result=None, error=None)
+    job_id = uuid.uuid4().hex
+    _start_job(domain, job_id, status="running", stage="starting", message="Starting...", progress=0, result=None, error=None)
 
     def run_in_background():
         def status_callback(stage, message, progress):
-            _update_job(domain, stage=stage, message=message, progress=progress)
+            _update_job(domain, job_id=job_id, stage=stage, message=message, progress=progress)
 
-        entry, err = analyse_single_url(url, FIRECRAWL_KEY, status_callback=status_callback)
+        def is_current_job():
+            return _get_job(domain).get("job_id") == job_id
+
+        entry, err = analyse_single_url(url, FIRECRAWL_KEY, status_callback=status_callback, should_save=is_current_job)
+        if not is_current_job():
+            return
         if entry:
-            _update_job(domain, status="complete", progress=100, message="Done!", result=entry, error=None)
+            entry["job_id"] = job_id
+            _update_job(domain, job_id=job_id, status="complete", progress=100, message="Done!", result=entry, error=None)
         else:
-            _update_job(domain, status="error", message=err or "Unknown error", error=err)
+            _update_job(domain, job_id=job_id, status="error", message=err or "Unknown error", error=err)
 
     import threading
     t = threading.Thread(target=run_in_background, daemon=True)
     t.start()
 
-    return {"status": "started", "domain": domain}
+    return {"status": "started", "domain": domain, "job_id": job_id}
 
 
 @app.get("/api/jobs/{domain}")
@@ -1984,6 +2295,9 @@ async def ws_analyse(websocket: WebSocket):
             await websocket.send_json({"type": "error", "message": "Missing url"})
             await websocket.close()
             return
+        if not url.startswith("http"):
+            url = "https://" + url
+        delete_from_history(extract_domain(url))
 
         def status_callback(stage, message, progress):
             status_queue.append({"type": "progress", "stage": stage, "message": message, "progress": progress})
@@ -2081,6 +2395,8 @@ async def ws_batch(websocket: WebSocket):
                             "progress": completed / total * 100
                         })
                         continue
+                else:
+                    delete_from_history(d)
 
                 status_queue = []
 
